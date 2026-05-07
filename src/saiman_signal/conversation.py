@@ -49,7 +49,7 @@ async def load_all() -> list[dict]:
     for msg in messages[-2:]:
         content = msg["content"]
         if content and isinstance(content[-1], dict):
-            content[-1]["cache_control"] = {"type": "ephemeral"}
+            content[-1]["cache_control"] = {"type": "ephemeral", "ttl": "1h"}
     return messages
 
 

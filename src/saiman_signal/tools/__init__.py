@@ -9,6 +9,9 @@ from saiman_signal.tools.web_search import execute as web_search
 
 TOOL_DEFINITIONS = [WEB_SEARCH_DEF, GET_PAGE_CONTENTS_DEF, REDDIT_SEARCH_DEF, REDDIT_READ_DEF]
 
+# Apply cache_control to last tool definition for stable caching
+TOOL_DEFINITIONS[-1] = {**TOOL_DEFINITIONS[-1], "cache_control": {"type": "ephemeral", "ttl": "1h"}}
+
 TOOLS = {
     "web_search": web_search,
     "get_page_contents": get_page_contents,
