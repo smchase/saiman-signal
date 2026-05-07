@@ -64,7 +64,11 @@ async def run(messages: list[dict]) -> list[str]:
             assistant_content = thinking_blocks + [{"type": "text", "text": final_text}]
             await conversation.add_message("assistant", assistant_content)
             logger.info(f"Agent done (iterations: {_iteration + 1}, tools: {len(all_tool_calls)})")
-            return _split_response(_append_tool_summary(final_text, all_tool_calls))
+            parts = _split_response(final_text)
+            summary = _build_tool_summary(all_tool_calls)
+            if summary:
+                parts.append(summary)
+            return parts
 
         all_tool_calls.extend(tool_calls)
         tool_names = [tc["name"] for tc in tool_calls]
@@ -140,7 +144,11 @@ async def run(messages: list[dict]) -> list[str]:
 
     assistant_content.append({"type": "text", "text": final_text})
     await conversation.add_message("assistant", assistant_content)
-    return _split_response(_append_tool_summary(final_text, all_tool_calls))
+    parts = _split_response(final_text)
+    summary = _build_tool_summary(all_tool_calls)
+    if summary:
+        parts.append(summary)
+    return parts
 
 
 async def _execute_tool(tool_call: dict) -> str:
@@ -152,9 +160,9 @@ async def _execute_tool(tool_call: dict) -> str:
     return await tool_fn(args)
 
 
-def _append_tool_summary(text: str, tool_calls: list[dict]) -> str:
+def _build_tool_summary(tool_calls: list[dict]) -> str | None:
     if not tool_calls:
-        return text
+        return None
 
     web_searches = 0
     pages_read = 0
@@ -190,8 +198,8 @@ def _append_tool_summary(text: str, tool_calls: list[dict]) -> str:
         )
 
     if not parts:
-        return text
-    return f"{text}\n\n🛠️ {', '.join(parts)}"
+        return None
+    return f"🛠️ {', '.join(parts)}"
 
 
 def _split_response(text: str) -> list[str]:
