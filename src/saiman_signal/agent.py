@@ -10,7 +10,7 @@ from saiman_signal.tools import TOOL_DEFINITIONS, TOOLS
 
 logger = logging.getLogger(__name__)
 
-_client = AsyncAnthropicBedrock(aws_region=config.AWS_REGION)
+_client = AsyncAnthropicBedrock(aws_region=config.AWS_REGION, timeout=300.0)
 
 _SYSTEM_PROMPT_PATH = __file__.replace("agent.py", "system_prompt.txt")
 
@@ -27,6 +27,9 @@ _SYSTEM_PROMPT = _load_system_prompt()
 
 def _inject_date_context(messages: list[dict]) -> list[dict]:
     """Prepend date context to the first user message for stable system prompt caching."""
+    import copy
+
+    messages = copy.deepcopy(messages)
     date_str = datetime.now(UTC).strftime("%B %d, %Y")
     date_prefix = f"[Current date: {date_str}]\n\n"
 
