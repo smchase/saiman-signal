@@ -30,46 +30,66 @@ async def execute(args: dict) -> str:
         urls = [urls]
     urls = urls[:10]
 
+    try:
+        results = await _fetch_threads_via_ssh(urls)
+    except Exception as e:
+        return f"Error: {e}"
+
     output = ""
-    for i, url in enumerate(urls):
+    for i, (url, result) in enumerate(results):
         if i > 0:
             output += f"\n{'=' * 60}\n\n"
-        try:
-            thread_output = await _fetch_thread(url)
-            output += thread_output
-        except Exception as e:
-            output += f"Error fetching {url}: {e}\n"
+        if isinstance(result, Exception):
+            output += f"Error fetching {url}: {result}\n"
+        else:
+            output += result
 
     return output
 
 
-async def _fetch_thread(url: str) -> str:
-    json_url = _normalize_url(url)
+async def _fetch_threads_via_ssh(urls: list[str]) -> list[tuple[str, str | Exception]]:
+    """Fetch multiple Reddit JSON URLs in a single SSH session."""
+    json_urls = [_normalize_url(u) for u in urls]
+    # Build a shell command that curls each URL and separates output with a delimiter
+    delimiter = "---REDDIT_SPLIT---"
+    curl_cmds = []
+    for url in json_urls:
+        curl_cmds.append(
+            f'curl -s -H "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'
+            f" AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0"
+            f' Safari/537.36" -H "Accept: application/json" \'{url}\''
+        )
+    # Join with delimiter echoed between each
+    shell_cmd = f'\necho "{delimiter}"\n'.join(curl_cmds)
 
-    # Fetch via SSH to avoid Reddit blocking AWS IPs
     proc = await asyncio.create_subprocess_exec(
         "ssh",
         "-o",
         "ConnectTimeout=10",
         config.REDDIT_SSH_HOST,
-        "curl",
-        "-s",
-        "-H",
-        "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "-H",
-        "Accept: application/json",
-        json_url,
+        "bash",
+        "-c",
+        shell_cmd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
     stdout, stderr = await proc.communicate()
 
     if proc.returncode != 0:
-        raise RuntimeError(f"SSH curl failed: {stderr.decode().strip()}")
+        raise RuntimeError(f"SSH failed: {stderr.decode().strip()}")
 
-    data = json.loads(stdout)
+    parts = stdout.decode().split(delimiter)
+    results: list[tuple[str, str | Exception]] = []
+    for url, raw in zip(urls, parts, strict=True):
+        try:
+            data = json.loads(raw.strip())
+            results.append((url, _parse_thread(url, data)))
+        except Exception as e:
+            results.append((url, e))
+    return results
 
+
+def _parse_thread(url: str, data: object) -> str:
     if not isinstance(data, list) or len(data) < 2:
         return f"Unexpected response format for {url}"
 
