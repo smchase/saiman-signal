@@ -17,6 +17,7 @@ async def send_message(recipient: str, text: str) -> int | None:
             "message": text,
             "number": config.BOT_PHONE_NUMBER,
             "recipients": [recipient],
+            "text_mode": "styled",
         },
     )
     if response.status_code == 201:

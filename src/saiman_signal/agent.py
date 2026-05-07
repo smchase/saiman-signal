@@ -24,18 +24,10 @@ def _build_system_prompt() -> str:
     return f"Today's date is {date_str}.\n\n{base}"
 
 
-_TOOL_LABELS = {
-    "web_search": "web search",
-    "get_page_contents": "page read",
-    "reddit_search": "Reddit search",
-    "reddit_read": "Reddit read",
-}
-
-
 async def run(messages: list[dict]) -> list[str]:
     """Run the agent loop. Returns list of message strings to send."""
     system_prompt = _build_system_prompt()
-    tool_usage: list[str] = []
+    all_tool_calls: list[dict] = []
 
     for _iteration in range(MAX_ITERATIONS):
         response = await _client.messages.create(
@@ -72,11 +64,9 @@ async def run(messages: list[dict]) -> list[str]:
             final_text = "\n".join(text_parts)
             assistant_content = thinking_blocks + [{"type": "text", "text": final_text}]
             await conversation.add_message("assistant", assistant_content)
-            return _split_response(_append_tool_summary(final_text, tool_usage))
+            return _split_response(_append_tool_summary(final_text, all_tool_calls))
 
-        # Track tool usage
-        for tc in tool_calls:
-            tool_usage.append(tc["name"])
+        all_tool_calls.extend(tool_calls)
 
         # Build assistant content with thinking + text + tool_use
         assistant_content = thinking_blocks[:]
@@ -146,7 +136,7 @@ async def run(messages: list[dict]) -> list[str]:
 
     assistant_content.append({"type": "text", "text": final_text})
     await conversation.add_message("assistant", assistant_content)
-    return _split_response(_append_tool_summary(final_text, tool_usage))
+    return _split_response(_append_tool_summary(final_text, all_tool_calls))
 
 
 async def _execute_tool(tool_call: dict) -> str:
@@ -158,17 +148,46 @@ async def _execute_tool(tool_call: dict) -> str:
     return await tool_fn(args)
 
 
-def _append_tool_summary(text: str, tool_usage: list[str]) -> str:
-    if not tool_usage:
+def _append_tool_summary(text: str, tool_calls: list[dict]) -> str:
+    if not tool_calls:
         return text
-    from collections import Counter
 
-    counts = Counter(tool_usage)
+    web_searches = 0
+    pages_read = 0
+    reddit_searches = 0
+    reddit_threads_read = 0
+
+    for tc in tool_calls:
+        name = tc["name"]
+        args = tc["input"]
+        if name == "web_search":
+            web_searches += 1
+        elif name == "get_page_contents":
+            urls = args.get("urls", [])
+            pages_read += len(urls) if isinstance(urls, list) else 1
+        elif name == "reddit_search":
+            reddit_searches += 1
+        elif name == "reddit_read":
+            urls = args.get("urls", [])
+            reddit_threads_read += len(urls) if isinstance(urls, list) else 1
+
     parts = []
-    for name, count in counts.items():
-        label = _TOOL_LABELS.get(name, name)
-        parts.append(f"{count} {label}" if count > 1 else label)
-    return f"{text}\n\n`{'  ·  '.join(parts)}`"
+    if web_searches:
+        parts.append(f"{web_searches} web search" + ("es" if web_searches > 1 else ""))
+    if pages_read:
+        parts.append(f"{pages_read} page" + ("s" if pages_read > 1 else "") + " read")
+    if reddit_searches:
+        parts.append(f"{reddit_searches} Reddit search" + ("es" if reddit_searches > 1 else ""))
+    if reddit_threads_read:
+        parts.append(
+            f"{reddit_threads_read} Reddit thread"
+            + ("s" if reddit_threads_read > 1 else "")
+            + " read"
+        )
+
+    if not parts:
+        return text
+    return f"{text}\n\n🛠️ {', '.join(parts)}"
 
 
 def _split_response(text: str) -> list[str]:
