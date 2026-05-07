@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 import re
 from datetime import UTC, datetime
@@ -7,7 +6,7 @@ from datetime import UTC, datetime
 from anthropic import AsyncAnthropicBedrock
 
 from saiman_signal import config, conversation
-from saiman_signal.tools import TOOLS, TOOL_DEFINITIONS
+from saiman_signal.tools import TOOL_DEFINITIONS, TOOLS
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +103,8 @@ async def run(messages: list[dict]) -> list[str]:
     force_msg = [
         {
             "type": "text",
-            "text": "You've reached the maximum number of tool calls. Provide your best answer with what you have.",
+            "text": "You've reached the maximum number of tool calls. "
+            "Provide your best answer with what you have.",
         }
     ]
     await conversation.add_message("user", force_msg)

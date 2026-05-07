@@ -3,7 +3,6 @@ import base64
 import json
 import logging
 from contextlib import suppress
-from pathlib import Path
 
 import websockets
 
