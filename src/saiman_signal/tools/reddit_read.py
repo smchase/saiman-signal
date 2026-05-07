@@ -1,5 +1,7 @@
 import httpx
 
+from saiman_signal import config
+
 DEFINITION = {
     "name": "reddit_read",
     "description": (
@@ -20,10 +22,25 @@ DEFINITION = {
     },
 }
 
-_USER_AGENT = (
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-)
+_USER_AGENT = f"saiman-signal/0.1 by {config.REDDIT_USERNAME}"
+
+_access_token: str | None = None
+
+
+async def _get_token(client: httpx.AsyncClient) -> str:
+    global _access_token
+    if _access_token:
+        return _access_token
+
+    response = await client.post(
+        "https://www.reddit.com/api/v1/access_token",
+        auth=(config.REDDIT_CLIENT_ID, config.REDDIT_CLIENT_SECRET),
+        data={"grant_type": "client_credentials"},
+        headers={"User-Agent": _USER_AGENT},
+    )
+    response.raise_for_status()
+    _access_token = response.json()["access_token"]
+    return _access_token
 
 
 async def execute(args: dict) -> str:
@@ -33,22 +50,43 @@ async def execute(args: dict) -> str:
     urls = urls[:10]
 
     output = ""
-    async with httpx.AsyncClient(timeout=30.0, headers={"User-Agent": _USER_AGENT}) as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        token = await _get_token(client)
+        headers = {"Authorization": f"Bearer {token}", "User-Agent": _USER_AGENT}
+
         for i, url in enumerate(urls):
             if i > 0:
                 output += f"\n{'=' * 60}\n\n"
             try:
-                thread_output = await _fetch_thread(client, url)
+                thread_output = await _fetch_thread(client, headers, url)
                 output += thread_output
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 401:
+                    # Token expired, refresh and retry
+                    global _access_token
+                    _access_token = None
+                    token = await _get_token(client)
+                    headers["Authorization"] = f"Bearer {token}"
+                    try:
+                        thread_output = await _fetch_thread(client, headers, url)
+                        output += thread_output
+                    except Exception as e2:
+                        output += f"Error fetching {url}: {e2}\n"
+                else:
+                    output += f"Error fetching {url}: {e}\n"
             except Exception as e:
                 output += f"Error fetching {url}: {e}\n"
 
     return output
 
 
-async def _fetch_thread(client: httpx.AsyncClient, url: str) -> str:
-    json_url = _normalize_url(url)
-    response = await client.get(json_url)
+async def _fetch_thread(client: httpx.AsyncClient, headers: dict, url: str) -> str:
+    api_path = _url_to_api_path(url)
+    response = await client.get(
+        f"https://oauth.reddit.com{api_path}",
+        headers=headers,
+        params={"sort": "top", "limit": 100},
+    )
     response.raise_for_status()
     data = response.json()
 
@@ -75,17 +113,22 @@ async def _fetch_thread(client: httpx.AsyncClient, url: str) -> str:
     comments_data = data[1].get("data", {}).get("children", [])
     if comments_data:
         output += f"\n{'-' * 60}\nTOP COMMENTS\n{'-' * 60}\n\n"
-        total = 100
-        output += _format_comments(comments_data, depth=0, total_limit=total)
+        output += _format_comments(comments_data, depth=0, total_limit=100)
 
     return output
 
 
-def _normalize_url(url: str) -> str:
-    clean = url.split("?")[0].rstrip("/")
-    if clean.endswith(".json"):
-        clean = clean[:-5]
-    return clean + ".json?sort=top"
+def _url_to_api_path(url: str) -> str:
+    """Convert a reddit URL to an API path for oauth.reddit.com."""
+    # Remove domain, query params, trailing slash
+    for prefix in ("https://www.reddit.com", "https://reddit.com", "https://old.reddit.com"):
+        if url.startswith(prefix):
+            url = url[len(prefix) :]
+            break
+    path = url.split("?")[0].rstrip("/")
+    if path.endswith(".json"):
+        path = path[:-5]
+    return path
 
 
 def _format_comments(
