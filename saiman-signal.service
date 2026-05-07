@@ -1,0 +1,16 @@
+[Unit]
+Description=Saiman Signal Bot
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=smchase
+WorkingDirectory=/home/smchase/saiman-signal
+EnvironmentFile=/home/smchase/saiman-signal/.env
+ExecStart=/home/smchase/.local/bin/uv run python -m saiman_signal
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

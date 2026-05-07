@@ -1,0 +1,19 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: smchase
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd ~/saiman-signal
+            git pull
+            sudo systemctl restart saiman-signal
