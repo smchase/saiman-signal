@@ -1,8 +1,8 @@
 import asyncio
 import base64
+import contextlib
 import json
 import logging
-from contextlib import suppress
 
 import websockets
 
@@ -52,11 +52,8 @@ async def _handle_envelope(envelope: dict) -> None:
     text = data_msg.get("message", "") or ""
     attachments = data_msg.get("attachments", [])
 
-    # Send read receipt
-    try:
-        await signal_api.send_read_receipt(source, [timestamp])
-    except Exception:
-        pass
+    with contextlib.suppress(Exception):
+        await signal_api.send_read_receipt(source, timestamp)
 
     # Handle CLEAR
     if text.strip() == "CLEAR":
@@ -113,7 +110,7 @@ async def _handle_envelope(envelope: dict) -> None:
     global _current_task, _typing_stop
     if _current_task and not _current_task.done():
         _current_task.cancel()
-        with suppress(asyncio.CancelledError):
+        with contextlib.suppress(asyncio.CancelledError):
             await _current_task
         await conversation.rollback_incomplete_turn()
 
@@ -150,10 +147,8 @@ async def _process_and_respond(recipient: str) -> None:
 
 async def _typing_loop(recipient: str, stop: asyncio.Event) -> None:
     while not stop.is_set():
-        try:
+        with contextlib.suppress(Exception):
             await signal_api.send_typing(recipient)
-        except Exception:
-            pass
         try:
             await asyncio.wait_for(stop.wait(), timeout=10.0)
         except TimeoutError:

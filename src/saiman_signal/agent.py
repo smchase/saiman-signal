@@ -24,11 +24,20 @@ def _build_system_prompt() -> str:
     return f"Today's date is {date_str}.\n\n{base}"
 
 
+_TOOL_LABELS = {
+    "web_search": "web search",
+    "get_page_contents": "page read",
+    "reddit_search": "Reddit search",
+    "reddit_read": "Reddit read",
+}
+
+
 async def run(messages: list[dict]) -> list[str]:
     """Run the agent loop. Returns list of message strings to send."""
     system_prompt = _build_system_prompt()
+    tool_usage: list[str] = []
 
-    for iteration in range(MAX_ITERATIONS):
+    for _iteration in range(MAX_ITERATIONS):
         response = await _client.messages.create(
             model=config.BEDROCK_MODEL_ID,
             max_tokens=21333,
@@ -63,7 +72,11 @@ async def run(messages: list[dict]) -> list[str]:
             final_text = "\n".join(text_parts)
             assistant_content = thinking_blocks + [{"type": "text", "text": final_text}]
             await conversation.add_message("assistant", assistant_content)
-            return _split_response(final_text)
+            return _split_response(_append_tool_summary(final_text, tool_usage))
+
+        # Track tool usage
+        for tc in tool_calls:
+            tool_usage.append(tc["name"])
 
         # Build assistant content with thinking + text + tool_use
         assistant_content = thinking_blocks[:]
@@ -81,7 +94,7 @@ async def run(messages: list[dict]) -> list[str]:
 
         # Build tool result content
         result_content = []
-        for tc, result in zip(tool_calls, tool_results):
+        for tc, result in zip(tool_calls, tool_results, strict=True):
             if isinstance(result, Exception):
                 result_content.append(
                     {
@@ -133,7 +146,7 @@ async def run(messages: list[dict]) -> list[str]:
 
     assistant_content.append({"type": "text", "text": final_text})
     await conversation.add_message("assistant", assistant_content)
-    return _split_response(final_text)
+    return _split_response(_append_tool_summary(final_text, tool_usage))
 
 
 async def _execute_tool(tool_call: dict) -> str:
@@ -143,6 +156,19 @@ async def _execute_tool(tool_call: dict) -> str:
     if not tool_fn:
         raise ValueError(f"Unknown tool: {name}")
     return await tool_fn(args)
+
+
+def _append_tool_summary(text: str, tool_usage: list[str]) -> str:
+    if not tool_usage:
+        return text
+    from collections import Counter
+
+    counts = Counter(tool_usage)
+    parts = []
+    for name, count in counts.items():
+        label = _TOOL_LABELS.get(name, name)
+        parts.append(f"{count} {label}" if count > 1 else label)
+    return f"{text}\n\n`{'  ·  '.join(parts)}`"
 
 
 def _split_response(text: str) -> list[str]:

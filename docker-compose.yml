@@ -1,10 +1,10 @@
 services:
   signal-cli:
-    image: ghcr.io/smchase/signal-cli-rest-api:latest
+    image: bbernhard/signal-cli-rest-api:latest
     ports:
       - "8080:8080"
     volumes:
       - ./signal-data:/home/.local/share/signal-cli
     environment:
-      - MODE=native
+      - MODE=json-rpc
     restart: unless-stopped
