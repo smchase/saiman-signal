@@ -170,6 +170,7 @@ async def run(messages: list[dict]) -> list[str]:
     summary = _build_tool_summary(all_tool_calls)
     if summary:
         parts.append(summary)
+    parts.append("⚠️ Response may be incomplete — tool call limit reached.")
     return parts
 
 
