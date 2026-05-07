@@ -21,5 +21,6 @@ Available formatting (and nothing else — no markdown links, no headers):
 - *italic* → wrap in single asterisks
 - ~strikethrough~ → wrap in tildes
 - `monospace` → wrap in backticks
+- Escape formatting characters with backslash: \~ for literal tilde (e.g., \~500 for "approximately 500")
 
 Do not use [text](url) links — just paste URLs directly. Do not use # headers. Bullet points with - are fine.
