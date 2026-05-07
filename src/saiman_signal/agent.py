@@ -60,13 +60,15 @@ async def run(messages: list[dict]) -> list[str]:
                 )
 
         if not tool_calls:
-            # Final response — store and return
             final_text = "\n".join(text_parts)
             assistant_content = thinking_blocks + [{"type": "text", "text": final_text}]
             await conversation.add_message("assistant", assistant_content)
+            logger.info(f"Agent done (iterations: {_iteration + 1}, tools: {len(all_tool_calls)})")
             return _split_response(_append_tool_summary(final_text, all_tool_calls))
 
         all_tool_calls.extend(tool_calls)
+        tool_names = [tc["name"] for tc in tool_calls]
+        logger.info(f"Iteration {_iteration + 1}: calling {tool_names}")
 
         # Build assistant content with thinking + text + tool_use
         assistant_content = thinking_blocks[:]
@@ -86,6 +88,7 @@ async def run(messages: list[dict]) -> list[str]:
         result_content = []
         for tc, result in zip(tool_calls, tool_results, strict=True):
             if isinstance(result, Exception):
+                logger.warning(f"Tool {tc['name']} failed: {result}")
                 result_content.append(
                     {
                         "type": "tool_result",
@@ -95,6 +98,7 @@ async def run(messages: list[dict]) -> list[str]:
                     }
                 )
             else:
+                logger.info(f"Tool {tc['name']} returned {len(result)} chars")
                 result_content.append(
                     {"type": "tool_result", "tool_use_id": tc["id"], "content": result}
                 )

@@ -20,6 +20,8 @@ _IMAGE_CONTENT_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp", "i
 
 async def run() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("anthropic").setLevel(logging.WARNING)
     await conversation.init()
     logger.info("Bot starting")
 
@@ -45,12 +47,15 @@ async def run() -> None:
 async def _handle_envelope(envelope: dict) -> None:
     source = envelope.get("source") or envelope.get("sourceNumber", "")
     if source != config.ALLOWED_NUMBER:
+        logger.debug(f"Ignoring message from unauthorized sender: {source}")
         return
 
     data_msg = envelope["dataMessage"]
     timestamp = data_msg.get("timestamp", 0)
     text = data_msg.get("message", "") or ""
     attachments = data_msg.get("attachments", [])
+
+    logger.info(f"Message received: {text[:100]!r} (attachments: {len(attachments)})")
 
     with contextlib.suppress(Exception):
         await signal_api.send_read_receipt(source, timestamp)
@@ -59,6 +64,7 @@ async def _handle_envelope(envelope: dict) -> None:
     if text.strip() == "CLEAR":
         await conversation.clear()
         await signal_api.react(source, source, timestamp, "✅")
+        logger.info("Conversation cleared")
         return
 
     # Process attachments
@@ -109,6 +115,7 @@ async def _handle_envelope(envelope: dict) -> None:
     # Cancel-and-restart if currently processing
     global _current_task, _typing_stop
     if _current_task and not _current_task.done():
+        logger.info("Cancelling in-flight request (new message arrived)")
         _current_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await _current_task
@@ -119,6 +126,9 @@ async def _handle_envelope(envelope: dict) -> None:
 
 async def _process_and_respond(recipient: str) -> None:
     global _typing_stop
+    import time
+
+    start = time.monotonic()
 
     # Start typing indicator
     _typing_stop = asyncio.Event()
@@ -126,10 +136,14 @@ async def _process_and_respond(recipient: str) -> None:
 
     try:
         messages = await conversation.load_all()
+        logger.info(f"Running agent with {len(messages)} messages in context")
         response_parts = await agent.run(messages)
 
         _typing_stop.set()
         await typing_task
+
+        elapsed = time.monotonic() - start
+        logger.info(f"Response ready ({elapsed:.1f}s, {len(response_parts)} part(s))")
 
         for part in response_parts:
             await signal_api.send_message(recipient, part)
