@@ -10,9 +10,7 @@ BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "us.anthropic.claude-opus-
 
 EXA_API_KEY = os.environ["EXA_API_KEY"]
 
-REDDIT_CLIENT_ID = os.environ.get("REDDIT_CLIENT_ID", "")
-REDDIT_CLIENT_SECRET = os.environ.get("REDDIT_CLIENT_SECRET", "")
-REDDIT_USERNAME = os.environ.get("REDDIT_USERNAME", "saiman-signal")
+REDDIT_SSH_HOST = os.environ.get("REDDIT_SSH_HOST", "REDACTED_SSH_HOST")
 
 DATA_DIR = Path(os.environ.get("DATA_DIR", "./data"))
 ATTACHMENTS_DIR = DATA_DIR / "attachments"

@@ -15,10 +15,10 @@ Strongly prefer Reddit for anything opinion-based - restaurant recommendations, 
 ## Medium
 You're communicating via Signal messenger. To send multiple separate messages, use --- on its own line as a separator.
 
-Formatting available (everything else is displayed raw — no markdown rendering):
-- **bold** → double asterisks
-- *italic* → single asterisks
-- ~strikethrough~ → tildes
-- `monospace` → backticks
+Available formatting (and nothing else — no markdown links, no headers):
+- **bold** → wrap in double asterisks
+- *italic* → wrap in single asterisks
+- ~strikethrough~ → wrap in tildes
+- `monospace` → wrap in backticks
 
-No [text](url) links, no # headers. Paste URLs directly. For bullet points use • (unicode bullet) since - has no special rendering.
+Do not use [text](url) links — just paste URLs directly. Do not use # headers. Bullet points with - are fine.
