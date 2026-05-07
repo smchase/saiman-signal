@@ -17,27 +17,48 @@ _SYSTEM_PROMPT_PATH = __file__.replace("agent.py", "system_prompt.txt")
 MAX_ITERATIONS = 20
 
 
-def _build_system_prompt() -> str:
+def _load_system_prompt() -> str:
     with open(_SYSTEM_PROMPT_PATH) as f:
-        base = f.read()
+        return f.read()
+
+
+_SYSTEM_PROMPT = _load_system_prompt()
+
+
+def _inject_date_context(messages: list[dict]) -> list[dict]:
+    """Prepend date context to the first user message for stable system prompt caching."""
     date_str = datetime.now(UTC).strftime("%B %d, %Y")
-    return f"Today's date is {date_str}.\n\n{base}"
+    date_prefix = f"[Current date: {date_str}]\n\n"
+
+    for msg in messages:
+        if msg["role"] == "user":
+            content = msg["content"]
+            if isinstance(content, list):
+                for block in content:
+                    if block.get("type") == "text":
+                        block["text"] = date_prefix + block["text"]
+                        return messages
+            elif isinstance(content, str):
+                msg["content"] = date_prefix + content
+                return messages
+    return messages
 
 
 async def run(messages: list[dict]) -> list[str]:
     """Run the agent loop. Returns list of message strings to send."""
-    system_prompt = _build_system_prompt()
+    messages = _inject_date_context(messages)
     all_tool_calls: list[dict] = []
 
     for _iteration in range(MAX_ITERATIONS):
         response = await _client.messages.create(
             model=config.BEDROCK_MODEL_ID,
             max_tokens=21333,
-            system=system_prompt,
+            system=_SYSTEM_PROMPT,
             messages=messages,
             tools=TOOL_DEFINITIONS,
             tool_choice={"type": "auto"},
-            thinking={"type": "enabled", "budget_tokens": 10000},
+            thinking={"type": "adaptive"},
+            extra_body={"output_config": {"effort": "high"}},
         )
 
         # Extract thinking blocks, text, and tool_use from response
@@ -124,10 +145,11 @@ async def run(messages: list[dict]) -> list[str]:
     response = await _client.messages.create(
         model=config.BEDROCK_MODEL_ID,
         max_tokens=21333,
-        system=system_prompt,
+        system=_SYSTEM_PROMPT,
         messages=messages,
         tools=[],
-        thinking={"type": "enabled", "budget_tokens": 10000},
+        thinking={"type": "adaptive"},
+        extra_body={"output_config": {"effort": "high"}},
     )
 
     final_text = ""

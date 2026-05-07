@@ -41,11 +41,48 @@ async def load_all() -> list[dict]:
     messages = []
     for role, content_blocks_json in rows:
         messages.append({"role": role, "content": json.loads(content_blocks_json)})
+
+    # Prune old tool results to save context (keep last 3 tool cycles intact)
+    messages = _prune_old_tool_results(messages)
+
     # Apply ephemeral cache_control to last 2 messages for prompt caching
     for msg in messages[-2:]:
         content = msg["content"]
         if content and isinstance(content[-1], dict):
             content[-1]["cache_control"] = {"type": "ephemeral"}
+    return messages
+
+
+def _prune_old_tool_results(messages: list[dict]) -> list[dict]:
+    """Replace old tool_result content with a placeholder to save context.
+
+    Keeps the last 3 tool result messages intact; older ones get their content
+    replaced with a short placeholder.
+    """
+    tool_result_indices = []
+    for i, msg in enumerate(messages):
+        if (
+            msg["role"] == "user"
+            and isinstance(msg["content"], list)
+            and any(b.get("type") == "tool_result" for b in msg["content"])
+        ):
+            tool_result_indices.append(i)
+
+    # Keep last 3 tool result messages intact
+    to_prune = tool_result_indices[:-3] if len(tool_result_indices) > 3 else []
+
+    for i in to_prune:
+        content = messages[i]["content"]
+        messages[i]["content"] = [
+            {
+                "type": "tool_result",
+                "tool_use_id": b["tool_use_id"],
+                "content": "[Tool result cleared to save context]",
+            }
+            for b in content
+            if b.get("type") == "tool_result"
+        ]
+
     return messages
 
 

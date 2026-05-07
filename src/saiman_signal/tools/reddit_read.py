@@ -1,5 +1,6 @@
 import asyncio
 import json
+from datetime import UTC, datetime
 
 from saiman_signal import config
 
@@ -100,9 +101,16 @@ def _parse_thread(url: str, data: object) -> str:
     score = post_data.get("score", 0)
     num_comments = post_data.get("num_comments", 0)
     subreddit = post_data.get("subreddit", "unknown")
+    created_utc = post_data.get("created_utc", 0)
+    date_str = (
+        datetime.fromtimestamp(created_utc, tz=UTC).strftime("%b %d, %Y") if created_utc else ""
+    )
 
     output = f"Reddit Thread: {title}\n{'=' * 60}\n"
-    output += f"r/{subreddit} | u/{author} | Score: {score} | {num_comments} comments\n\n"
+    output += f"r/{subreddit} | u/{author}"
+    if date_str:
+        output += f" | {date_str}"
+    output += f" | Score: {score} | {num_comments} comments\n\n"
     if selftext:
         output += selftext + "\n"
     else:
