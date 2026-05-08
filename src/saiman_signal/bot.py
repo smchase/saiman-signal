@@ -30,7 +30,7 @@ async def run() -> None:
     while True:
         try:
             logger.info(f"Connecting to {ws_url}")
-            async with websockets.connect(ws_url) as ws:
+            async with websockets.connect(ws_url, ping_interval=30, ping_timeout=10) as ws:
                 logger.info("Connected")
                 async for raw in ws:
                     try:

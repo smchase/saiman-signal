@@ -9,7 +9,7 @@ User=ubuntu
 WorkingDirectory=/home/ubuntu/saiman-signal
 EnvironmentFile=/home/ubuntu/saiman-signal/.env
 ExecStart=/home/ubuntu/.local/bin/uv run python -m saiman_signal
-Restart=on-failure
+Restart=always
 RestartSec=5
 
 [Install]
