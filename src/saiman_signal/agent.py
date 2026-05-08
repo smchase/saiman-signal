@@ -1,7 +1,9 @@
 import asyncio
+import json
 import logging
 import re
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 from anthropic import AsyncAnthropicBedrock
 
@@ -25,13 +27,29 @@ def _load_system_prompt() -> str:
 _SYSTEM_PROMPT = _load_system_prompt()
 
 
+_LOCATION_PATH = config.DATA_DIR / "location.json"
+
+
+def _get_context_prefix() -> str:
+    """Build date/time/location context string."""
+    try:
+        location = json.loads(_LOCATION_PATH.read_text())
+        city = location["city"]
+        tz = ZoneInfo(location["timezone"])
+        now = datetime.now(tz)
+        time_str = now.strftime("%B %d, %Y, %I:%M %p %Z")
+        return f"[{time_str} | Location: {city}]\n\n"
+    except (FileNotFoundError, KeyError, json.JSONDecodeError):
+        date_str = datetime.now(UTC).strftime("%B %d, %Y")
+        return f"[Current date: {date_str}]\n\n"
+
+
 def _inject_date_context(messages: list[dict]) -> list[dict]:
-    """Prepend date context to the first user message for stable system prompt caching."""
+    """Prepend date/location context to the first user message for stable system prompt caching."""
     import copy
 
     messages = copy.deepcopy(messages)
-    date_str = datetime.now(UTC).strftime("%B %d, %Y")
-    date_prefix = f"[Current date: {date_str}]\n\n"
+    prefix = _get_context_prefix()
 
     for msg in messages:
         if msg["role"] == "user":
@@ -39,10 +57,10 @@ def _inject_date_context(messages: list[dict]) -> list[dict]:
             if isinstance(content, list):
                 for block in content:
                     if block.get("type") == "text":
-                        block["text"] = date_prefix + block["text"]
+                        block["text"] = prefix + block["text"]
                         return messages
             elif isinstance(content, str):
-                msg["content"] = date_prefix + content
+                msg["content"] = prefix + content
                 return messages
     return messages
 

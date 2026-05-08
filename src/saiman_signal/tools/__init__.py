@@ -6,6 +6,8 @@ from saiman_signal.tools.reddit_read import DEFINITION as REDDIT_READ_DEF
 from saiman_signal.tools.reddit_read import execute as reddit_read
 from saiman_signal.tools.reddit_search import DEFINITION as REDDIT_SEARCH_DEF
 from saiman_signal.tools.reddit_search import execute as reddit_search
+from saiman_signal.tools.set_location import DEFINITION as SET_LOCATION_DEF
+from saiman_signal.tools.set_location import execute as set_location
 from saiman_signal.tools.web_search import DEFINITION as WEB_SEARCH_DEF
 from saiman_signal.tools.web_search import execute as web_search
 
@@ -15,6 +17,7 @@ TOOL_DEFINITIONS = [
     REDDIT_SEARCH_DEF,
     REDDIT_READ_DEF,
     BELI_LOOKUP_DEF,
+    SET_LOCATION_DEF,
 ]
 
 # Apply cache_control to last tool definition for stable caching
@@ -26,4 +29,5 @@ TOOLS = {
     "reddit_search": reddit_search,
     "reddit_read": reddit_read,
     "beli_lookup": beli_lookup,
+    "set_location": set_location,
 }
