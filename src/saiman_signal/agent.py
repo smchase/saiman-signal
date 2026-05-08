@@ -194,6 +194,7 @@ def _build_tool_summary(tool_calls: list[dict]) -> str | None:
     pages_read = 0
     reddit_searches = 0
     reddit_threads_read = 0
+    beli_lookups = 0
 
     for tc in tool_calls:
         name = tc["name"]
@@ -208,6 +209,9 @@ def _build_tool_summary(tool_calls: list[dict]) -> str | None:
         elif name == "reddit_read":
             urls = args.get("urls", [])
             reddit_threads_read += len(urls) if isinstance(urls, list) else 1
+        elif name == "beli_lookup":
+            restaurants = args.get("restaurants", [])
+            beli_lookups += len(restaurants) if isinstance(restaurants, list) else 1
 
     parts = []
     if web_searches:
@@ -221,6 +225,10 @@ def _build_tool_summary(tool_calls: list[dict]) -> str | None:
             f"{reddit_threads_read} Reddit thread"
             + ("s" if reddit_threads_read > 1 else "")
             + " read"
+        )
+    if beli_lookups:
+        parts.append(
+            f"{beli_lookups} Beli lookup" + ("s" if beli_lookups > 1 else "")
         )
 
     if not parts:
