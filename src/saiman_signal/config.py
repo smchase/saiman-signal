@@ -13,6 +13,9 @@ OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 
 REDDIT_SSH_HOST = os.environ.get("REDDIT_SSH_HOST", "REDACTED_SSH_HOST")
 
+BELI_EMAIL = os.environ["BELI_EMAIL"]
+BELI_PASSWORD = os.environ["BELI_PASSWORD"]
+
 DATA_DIR = Path(os.environ.get("DATA_DIR", "./data"))
 ATTACHMENTS_DIR = DATA_DIR / "attachments"
 DB_PATH = DATA_DIR / "saiman.db"

@@ -11,7 +11,7 @@ jobs:
       - uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.EC2_HOST }}
-          username: smchase
+          username: ubuntu
           key: ${{ secrets.SSH_KEY }}
           script: |
             cd ~/saiman-signal
