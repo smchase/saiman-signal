@@ -3,6 +3,8 @@ import base64
 import contextlib
 import json
 import logging
+import subprocess
+import time
 
 import websockets
 
@@ -13,6 +15,9 @@ logger = logging.getLogger(__name__)
 
 _current_task: asyncio.Task | None = None
 _typing_stop: asyncio.Event | None = None
+_last_ws_message: float = 0.0
+_WATCHDOG_INTERVAL = 120  # check every 2 min
+_WATCHDOG_TIMEOUT = 300  # restart if no WS message in 5 min
 
 _VOICE_CONTENT_TYPES = {"audio/aac", "audio/ogg", "audio/mp4", "audio/mpeg"}
 _IMAGE_CONTENT_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp", "image/heic"}
@@ -27,21 +32,27 @@ async def run() -> None:
 
     ws_url = f"ws://{config.SIGNAL_API_URL.removeprefix('http://').removeprefix('https://')}/v1/receive/{config.BOT_PHONE_NUMBER}"
 
+    global _last_ws_message
+    _last_ws_message = time.time()
+    asyncio.create_task(_watchdog())
+
     while True:
         try:
             logger.info(f"Connecting to {ws_url}")
             async with websockets.connect(ws_url, ping_interval=30, ping_timeout=10) as ws:
                 logger.info("Connected")
+                _last_ws_message = time.time()
                 async for raw in ws:
+                    _last_ws_message = time.time()
                     try:
                         envelope = json.loads(raw).get("envelope", {})
                         if envelope.get("dataMessage") is not None:
                             asyncio.create_task(_handle_envelope(envelope))
                     except json.JSONDecodeError:
                         pass
-        except (websockets.ConnectionClosed, ConnectionError, OSError) as e:
+        except Exception as e:
             logger.warning(f"Disconnected: {e}")
-            await asyncio.sleep(2)
+            await asyncio.sleep(5)
 
 
 async def _handle_envelope(envelope: dict) -> None:
@@ -167,3 +178,23 @@ async def _typing_loop(recipient: str, stop: asyncio.Event) -> None:
             await asyncio.wait_for(stop.wait(), timeout=10.0)
         except TimeoutError:
             continue
+
+
+async def _watchdog() -> None:
+    """Restart Signal CLI container if no WebSocket messages received for too long."""
+    while True:
+        await asyncio.sleep(_WATCHDOG_INTERVAL)
+        elapsed = time.time() - _last_ws_message
+        if elapsed > _WATCHDOG_TIMEOUT:
+            logger.warning(
+                f"No WS messages in {elapsed:.0f}s, restarting signal-cli container"
+            )
+            try:
+                subprocess.run(
+                    ["docker", "restart", "saiman-signal-signal-cli-1"],
+                    timeout=30,
+                    capture_output=True,
+                )
+                await asyncio.sleep(10)  # give container time to boot
+            except Exception as e:
+                logger.error(f"Failed to restart signal-cli: {e}")
