@@ -3,6 +3,8 @@ import base64
 import contextlib
 import json
 import logging
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import websockets
 
@@ -16,6 +18,18 @@ _typing_stop: asyncio.Event | None = None
 
 _VOICE_CONTENT_TYPES = {"audio/aac", "audio/ogg", "audio/mp4", "audio/mpeg"}
 _IMAGE_CONTENT_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp", "image/heic"}
+_LOCATION_PATH = config.DATA_DIR / "location.json"
+
+
+def _time_prefix() -> str:
+    """Generate timestamp prefix for user messages, using location timezone if set."""
+    try:
+        data = json.loads(_LOCATION_PATH.read_text())
+        tz = ZoneInfo(data["timezone"])
+    except (FileNotFoundError, KeyError, json.JSONDecodeError):
+        tz = ZoneInfo("UTC")
+    now = datetime.now(tz)
+    return f"[{now.strftime('%A, %B %-d, %Y at %-I:%M %p')}]\n\n"
 
 
 async def run() -> None:
@@ -104,7 +118,7 @@ async def _handle_envelope(envelope: dict) -> None:
 
     # Build user message content
     if text:
-        content_blocks.append({"type": "text", "text": text})
+        content_blocks.append({"type": "text", "text": f"{_time_prefix()}{text}"})
 
     if not content_blocks:
         return

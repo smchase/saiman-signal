@@ -2,13 +2,13 @@ import asyncio
 import json
 import logging
 import re
-from datetime import UTC, datetime
-from zoneinfo import ZoneInfo
 
 from anthropic import AsyncAnthropicBedrock
 
 from saiman_signal import config, conversation
 from saiman_signal.tools import TOOL_DEFINITIONS, TOOLS
+
+_LOCATION_PATH = config.DATA_DIR / "location.json"
 
 logger = logging.getLogger(__name__)
 
@@ -30,51 +30,33 @@ _SYSTEM_PROMPT = _load_system_prompt()
 _LOCATION_PATH = config.DATA_DIR / "location.json"
 
 
-def _get_context_prefix() -> str:
-    """Build date/time/location context string."""
+def _get_location() -> tuple[str | None, str | None]:
+    """Read persisted location. Returns (city, timezone) or (None, None)."""
     try:
-        location = json.loads(_LOCATION_PATH.read_text())
-        city = location["city"]
-        tz = ZoneInfo(location["timezone"])
-        now = datetime.now(tz)
-        time_str = now.strftime("%B %d, %Y, %I:%M %p %Z")
-        return f"[{time_str} | Location: {city}]\n\n"
+        data = json.loads(_LOCATION_PATH.read_text())
+        return data["city"], data["timezone"]
     except (FileNotFoundError, KeyError, json.JSONDecodeError):
-        date_str = datetime.now(UTC).strftime("%B %d, %Y")
-        return f"[Current date: {date_str}]\n\n"
+        return None, None
 
 
-def _inject_date_context(messages: list[dict]) -> list[dict]:
-    """Prepend date/location context to the first user message for stable system prompt caching."""
-    import copy
-
-    messages = copy.deepcopy(messages)
-    prefix = _get_context_prefix()
-
-    for msg in messages:
-        if msg["role"] == "user":
-            content = msg["content"]
-            if isinstance(content, list):
-                for block in content:
-                    if block.get("type") == "text":
-                        block["text"] = prefix + block["text"]
-                        return messages
-            elif isinstance(content, str):
-                msg["content"] = prefix + content
-                return messages
-    return messages
+def _build_system_prompt() -> str:
+    """System prompt with location appended if set."""
+    city, tz = _get_location()
+    if city:
+        return f"{_SYSTEM_PROMPT}\n\n[User location: {city} ({tz})]"
+    return _SYSTEM_PROMPT
 
 
 async def run(messages: list[dict]) -> list[str]:
     """Run the agent loop. Returns list of message strings to send."""
-    messages = _inject_date_context(messages)
+    system_prompt = _build_system_prompt()
     all_tool_calls: list[dict] = []
 
     for _iteration in range(MAX_ITERATIONS):
         response = await _client.messages.create(
             model=config.BEDROCK_MODEL_ID,
             max_tokens=21333,
-            system=_SYSTEM_PROMPT,
+            system=system_prompt,
             messages=messages,
             tools=TOOL_DEFINITIONS,
             tool_choice={"type": "auto"},
@@ -166,7 +148,7 @@ async def run(messages: list[dict]) -> list[str]:
     response = await _client.messages.create(
         model=config.BEDROCK_MODEL_ID,
         max_tokens=21333,
-        system=_SYSTEM_PROMPT,
+        system=system_prompt,
         messages=messages,
         tools=[],
         thinking={"type": "adaptive"},
