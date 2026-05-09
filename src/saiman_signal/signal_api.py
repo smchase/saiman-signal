@@ -10,11 +10,11 @@ logger = logging.getLogger(__name__)
 
 _client = httpx.AsyncClient(base_url=config.SIGNAL_API_URL, timeout=30.0)
 
-_APPROX_TILDE = re.compile(r"(?<!\\)~(?=\d)")
+_UNESCAPED_TILDE = re.compile(r"(?<!\\)~")
 
 
 async def send_message(recipient: str, text: str) -> int | None:
-    text = _APPROX_TILDE.sub(r"\~", text)
+    text = _UNESCAPED_TILDE.sub(r"\~", text)
     response = await _client.post(
         "/v2/send",
         json={
