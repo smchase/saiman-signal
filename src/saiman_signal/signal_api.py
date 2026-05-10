@@ -38,6 +38,13 @@ async def send_typing(recipient: str) -> None:
     )
 
 
+async def stop_typing(recipient: str) -> None:
+    await _client.delete(
+        f"/v1/typing-indicator/{config.BOT_PHONE_NUMBER}",
+        params={"recipient": recipient},
+    )
+
+
 async def send_read_receipt(recipient: str, timestamp: int) -> None:
     await _client.post(
         f"/v1/receipts/{config.BOT_PHONE_NUMBER}",

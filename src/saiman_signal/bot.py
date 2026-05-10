@@ -86,6 +86,8 @@ async def _handle_envelope(envelope: dict) -> None:
 
     if text.strip() == "CLEAR":
         await _cancel_current()
+        with contextlib.suppress(Exception):
+            await signal_api.stop_typing(source)
         await conversation.clear()
         await signal_api.react(source, source, timestamp, "✅")
         logger.info("Conversation cleared")
