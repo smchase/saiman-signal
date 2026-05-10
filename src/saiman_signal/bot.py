@@ -59,6 +59,7 @@ async def run() -> None:
 
 
 async def _handle_envelope(envelope: dict) -> None:
+    global _current_task, _typing_stop
     source = envelope.get("source") or envelope.get("sourceNumber", "")
     if source != config.ALLOWED_NUMBER:
         logger.debug(f"Ignoring message from unauthorized sender: {source}")
@@ -76,7 +77,6 @@ async def _handle_envelope(envelope: dict) -> None:
 
     # Handle CLEAR
     if text.strip() == "CLEAR":
-        global _current_task
         if _current_task and not _current_task.done():
             _current_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -133,7 +133,6 @@ async def _handle_envelope(envelope: dict) -> None:
     await conversation.add_message("user", content_blocks)
 
     # Cancel-and-restart if currently processing
-    global _current_task, _typing_stop
     if _current_task and not _current_task.done():
         logger.info("Cancelling in-flight request (new message arrived)")
         _current_task.cancel()
