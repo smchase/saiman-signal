@@ -76,6 +76,12 @@ async def _handle_envelope(envelope: dict) -> None:
 
     # Handle CLEAR
     if text.strip() == "CLEAR":
+        global _current_task
+        if _current_task and not _current_task.done():
+            _current_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await _current_task
+            await conversation.rollback_incomplete_turn()
         await conversation.clear()
         await signal_api.react(source, source, timestamp, "✅")
         logger.info("Conversation cleared")
