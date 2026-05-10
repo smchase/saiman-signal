@@ -3,6 +3,7 @@ import base64
 import contextlib
 import json
 import logging
+import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -13,16 +14,14 @@ from saiman_signal.transcription import transcribe
 
 logger = logging.getLogger(__name__)
 
-_current_task: asyncio.Task | None = None
-_typing_stop: asyncio.Event | None = None
-
 _VOICE_CONTENT_TYPES = {"audio/aac", "audio/ogg", "audio/mp4", "audio/mpeg"}
 _IMAGE_CONTENT_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp", "image/heic"}
 _LOCATION_PATH = config.DATA_DIR / "location.json"
 
+_state: dict = {"task": None}
+
 
 def _time_prefix() -> str:
-    """Generate timestamp prefix for user messages, using location timezone if set."""
     try:
         data = json.loads(_LOCATION_PATH.read_text())
         tz = ZoneInfo(data["timezone"])
@@ -32,6 +31,15 @@ def _time_prefix() -> str:
     return f"[{now.strftime('%A, %B %-d, %Y at %-I:%M %p')}]\n\n"
 
 
+async def _cancel_current() -> None:
+    task = _state["task"]
+    if task and not task.done():
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+        await conversation.rollback_incomplete_turn()
+
+
 async def run() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -39,7 +47,10 @@ async def run() -> None:
     await conversation.init()
     logger.info("Bot starting")
 
-    ws_url = f"ws://{config.SIGNAL_API_URL.removeprefix('http://').removeprefix('https://')}/v1/receive/{config.BOT_PHONE_NUMBER}"
+    ws_url = (
+        f"ws://{config.SIGNAL_API_URL.removeprefix('http://').removeprefix('https://')}"
+        f"/v1/receive/{config.BOT_PHONE_NUMBER}"
+    )
 
     while True:
         try:
@@ -59,10 +70,8 @@ async def run() -> None:
 
 
 async def _handle_envelope(envelope: dict) -> None:
-    global _current_task, _typing_stop
     source = envelope.get("source") or envelope.get("sourceNumber", "")
     if source != config.ALLOWED_NUMBER:
-        logger.debug(f"Ignoring message from unauthorized sender: {source}")
         return
 
     data_msg = envelope["dataMessage"]
@@ -75,19 +84,13 @@ async def _handle_envelope(envelope: dict) -> None:
     with contextlib.suppress(Exception):
         await signal_api.send_read_receipt(source, timestamp)
 
-    # Handle CLEAR
     if text.strip() == "CLEAR":
-        if _current_task and not _current_task.done():
-            _current_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await _current_task
-            await conversation.rollback_incomplete_turn()
+        await _cancel_current()
         await conversation.clear()
         await signal_api.react(source, source, timestamp, "✅")
         logger.info("Conversation cleared")
         return
 
-    # Process attachments
     content_blocks = []
     for att in attachments:
         content_type = att.get("contentType", "")
@@ -110,55 +113,38 @@ async def _handle_envelope(envelope: dict) -> None:
             path = await signal_api.download_attachment(att_id)
             if path:
                 image_data = base64.standard_b64encode(path.read_bytes()).decode()
-                media_type = content_type
-                content_blocks.append(
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": media_type,
-                            "data": image_data,
-                        },
-                    }
-                )
+                content_blocks.append({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": content_type,
+                        "data": image_data,
+                    },
+                })
 
-    # Build user message content
     if text:
         content_blocks.append({"type": "text", "text": f"{_time_prefix()}{text}"})
 
     if not content_blocks:
         return
 
-    # Store user message
     await conversation.add_message("user", content_blocks)
 
-    # Cancel-and-restart if currently processing
-    if _current_task and not _current_task.done():
-        logger.info("Cancelling in-flight request (new message arrived)")
-        _current_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await _current_task
-        await conversation.rollback_incomplete_turn()
-
-    _current_task = asyncio.create_task(_process_and_respond(source))
+    await _cancel_current()
+    _state["task"] = asyncio.create_task(_process_and_respond(source))
 
 
 async def _process_and_respond(recipient: str) -> None:
-    global _typing_stop
-    import time
-
     start = time.monotonic()
-
-    # Start typing indicator
-    _typing_stop = asyncio.Event()
-    typing_task = asyncio.create_task(_typing_loop(recipient, _typing_stop))
+    stop = asyncio.Event()
+    typing_task = asyncio.create_task(_typing_loop(recipient, stop))
 
     try:
         messages = await conversation.load_all()
         logger.info(f"Running agent with {len(messages)} messages in context")
         response_parts = await agent.run(messages)
 
-        _typing_stop.set()
+        stop.set()
         await typing_task
 
         elapsed = time.monotonic() - start
@@ -168,11 +154,11 @@ async def _process_and_respond(recipient: str) -> None:
             await signal_api.send_message(recipient, part)
 
     except asyncio.CancelledError:
-        _typing_stop.set()
+        stop.set()
         typing_task.cancel()
         raise
     except Exception as e:
-        _typing_stop.set()
+        stop.set()
         typing_task.cancel()
         logger.exception("Processing error")
         await signal_api.send_message(recipient, f"Error: {e}")
@@ -186,5 +172,3 @@ async def _typing_loop(recipient: str, stop: asyncio.Event) -> None:
             await asyncio.wait_for(stop.wait(), timeout=10.0)
         except TimeoutError:
             continue
-
-
