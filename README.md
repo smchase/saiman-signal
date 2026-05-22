@@ -6,8 +6,9 @@ Personal research assistant on Signal. Combines Claude Opus 4.6 (extended thinki
 
 - **Bot** (`src/saiman_signal/bot.py`): WebSocket listener for Signal messages, cancel-and-restart orchestration, typing indicators
 - **Agent** (`src/saiman_signal/agent.py`): LLM loop with tool execution (max 20 iterations), adaptive thinking
-- **Tools**: Web search (Exa), page reading, Reddit search/read (via SSH proxy)
+- **Tools**: Web search (Exa), page reading, Reddit search/read (via SSH proxy), Beli restaurant lookup, location setting
 - **Conversation** (`src/saiman_signal/conversation.py`): SQLite persistence with context pruning
+- **Transcription** (`src/saiman_signal/transcription.py`): Voice memo transcription via OpenAI GPT-4o
 - **Signal CLI REST API**: Docker container handling Signal protocol
 
 ## Prerequisites
@@ -16,7 +17,7 @@ Personal research assistant on Signal. Combines Claude Opus 4.6 (extended thinki
 - [uv](https://docs.astral.sh/uv/)
 - Docker
 - AWS credentials configured (for Bedrock)
-- SSH key for Reddit proxy (`~/.ssh/` with access to uwcs)
+- SSH key for Reddit proxy (access to `REDDIT_SSH_HOST`)
 
 ## Local Development
 
@@ -140,5 +141,7 @@ docker compose logs -f signal-cli
 | `EXA_API_KEY` | Exa search API key |
 | `OPENAI_API_KEY` | OpenAI key (for voice transcription) |
 | `REDDIT_SSH_HOST` | SSH host for Reddit proxy (e.g. `user@host`) |
+| `BELI_EMAIL` | Beli account email |
+| `BELI_PASSWORD` | Beli account password |
 | `EC2_HOST` | EC2 public IP (used by CI/CD and manual deploy) |
 | `DATA_DIR` | Data directory for SQLite DB and attachments |
