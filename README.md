@@ -34,7 +34,6 @@ uv run python -m saiman_signal
 - AMI: Ubuntu 24.04 (ARM)
 - Instance type: t4g.small
 - Security group: SSH (22) inbound
-- Key pair: `saiman-signal.pem`
 
 ### Initial Setup
 
@@ -79,9 +78,9 @@ Required IAM permissions:
 
 ### SSH Key for Reddit Proxy
 
-The bot proxies Reddit requests through a university server to avoid AWS IP blocks. It SSHs to `REDDIT_SSH_HOST` (default: `REDACTED_SSH_HOST`) using the EC2 instance's default SSH key (`~/.ssh/id_ed25519`).
+The bot proxies Reddit requests through a university server to avoid AWS IP blocks. It SSHs to `REDDIT_SSH_HOST` using the EC2 instance's default SSH key (`~/.ssh/id_ed25519`).
 
-Setup: ensure the EC2 instance's public key is in `~/.ssh/authorized_keys` on the university server.
+Setup: ensure the EC2 instance's public key is in `~/.ssh/authorized_keys` on the target server.
 
 ## Deployment
 
@@ -99,7 +98,7 @@ Push to `main` triggers automatic deployment via GitHub Actions:
 ### Manual Deploy
 
 ```bash
-ssh -i ~/.ssh/saiman-signal.pem ubuntu@EC2_HOST
+ssh ubuntu@$EC2_HOST
 cd ~/saiman-signal
 git pull
 sudo systemctl restart saiman-signal
@@ -140,4 +139,6 @@ docker compose logs -f signal-cli
 | `BEDROCK_MODEL_ID` | Claude model ID |
 | `EXA_API_KEY` | Exa search API key |
 | `OPENAI_API_KEY` | OpenAI key (for voice transcription) |
+| `REDDIT_SSH_HOST` | SSH host for Reddit proxy (e.g. `user@host`) |
+| `EC2_HOST` | EC2 public IP (used by CI/CD and manual deploy) |
 | `DATA_DIR` | Data directory for SQLite DB and attachments |

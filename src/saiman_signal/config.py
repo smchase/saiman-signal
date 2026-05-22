@@ -11,7 +11,7 @@ BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "us.anthropic.claude-opus-
 EXA_API_KEY = os.environ["EXA_API_KEY"]
 OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 
-REDDIT_SSH_HOST = os.environ.get("REDDIT_SSH_HOST", "REDACTED_SSH_HOST")
+REDDIT_SSH_HOST = os.environ["REDDIT_SSH_HOST"]
 
 BELI_EMAIL = os.environ["BELI_EMAIL"]
 BELI_PASSWORD = os.environ["BELI_PASSWORD"]
