@@ -9,7 +9,8 @@ from zoneinfo import ZoneInfo
 
 import websockets
 
-from saiman_signal import agent, config, conversation, signal_api
+from saiman_signal import config, conversation, signal_api
+from saiman_signal.agent import EmptyResponseError, run as agent_run
 from saiman_signal.transcription import transcribe
 
 logger = logging.getLogger(__name__)
@@ -144,7 +145,7 @@ async def _process_and_respond(recipient: str) -> None:
     try:
         messages = await conversation.load_all()
         logger.info(f"Running agent with {len(messages)} messages in context")
-        response_parts = await agent.run(messages)
+        response_parts = await agent_run(messages)
 
         stop.set()
         await typing_task
@@ -159,6 +160,13 @@ async def _process_and_respond(recipient: str) -> None:
         stop.set()
         typing_task.cancel()
         raise
+    except EmptyResponseError:
+        stop.set()
+        typing_task.cancel()
+        await conversation.rollback_incomplete_turn()
+        await signal_api.send_message(
+            recipient, "[empty response — likely filtered by Bedrock safety. try rephrasing]"
+        )
     except Exception as e:
         stop.set()
         typing_task.cancel()
