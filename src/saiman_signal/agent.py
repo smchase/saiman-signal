@@ -84,7 +84,9 @@ async def run(messages: list[dict]) -> list[str]:
                 )
 
         if not tool_calls:
-            final_text = "\n".join(text_parts)
+            final_text = "\n".join(text_parts).strip()
+            if not final_text:
+                final_text = "I wasn't able to generate a response. Could you try rephrasing?"
             assistant_content = thinking_blocks + [{"type": "text", "text": final_text}]
             await conversation.add_message("assistant", assistant_content)
             logger.info(f"Agent done (iterations: {_iteration + 1}, tools: {len(all_tool_calls)})")
@@ -100,8 +102,9 @@ async def run(messages: list[dict]) -> list[str]:
 
         # Build assistant content with thinking + text + tool_use
         assistant_content = thinking_blocks[:]
-        if text_parts:
-            assistant_content.append({"type": "text", "text": "\n".join(text_parts)})
+        joined_text = "\n".join(text_parts).strip()
+        if joined_text:
+            assistant_content.append({"type": "text", "text": joined_text})
         assistant_content.extend(tool_calls)
 
         await conversation.add_message("assistant", assistant_content)
