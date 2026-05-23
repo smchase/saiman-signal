@@ -16,6 +16,10 @@ logger = logging.getLogger(__name__)
 class EmptyResponseError(Exception):
     """Raised when the model returns no text (e.g. safety-filtered)."""
 
+    def __init__(self, stop_reason: str | None = None):
+        self.stop_reason = stop_reason
+        super().__init__(f"empty response (stop_reason={stop_reason})")
+
 _client = AsyncAnthropicBedrock(aws_region=config.AWS_REGION, timeout=300.0)
 
 _SYSTEM_PROMPT_PATH = __file__.replace("agent.py", "system_prompt.txt")
@@ -90,8 +94,11 @@ async def run(messages: list[dict]) -> list[str]:
         if not tool_calls:
             final_text = "\n".join(text_parts).strip()
             if not final_text:
-                logger.warning("Model returned empty text (likely safety-filtered)")
-                raise EmptyResponseError()
+                logger.warning(
+                    f"Model returned empty text — stop_reason={response.stop_reason}, "
+                    f"content_types={[b.type for b in response.content]}"
+                )
+                raise EmptyResponseError(response.stop_reason)
             assistant_content = thinking_blocks + [{"type": "text", "text": final_text}]
             await conversation.add_message("assistant", assistant_content)
             logger.info(f"Agent done (iterations: {_iteration + 1}, tools: {len(all_tool_calls)})")

@@ -160,12 +160,12 @@ async def _process_and_respond(recipient: str) -> None:
         stop.set()
         typing_task.cancel()
         raise
-    except EmptyResponseError:
+    except EmptyResponseError as e:
         stop.set()
         typing_task.cancel()
         await conversation.rollback_incomplete_turn()
         await signal_api.send_message(
-            recipient, "[empty response — likely filtered by Bedrock safety. try rephrasing]"
+            recipient, f"[empty response — stop_reason={e.stop_reason}. try rephrasing]"
         )
     except Exception as e:
         stop.set()
