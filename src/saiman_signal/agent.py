@@ -182,6 +182,10 @@ async def run(messages: list[dict]) -> list[str]:
         elif block.type == "text":
             final_text = block.text
 
+    final_text = final_text.strip()
+    if not final_text:
+        raise EmptyResponseError(response.stop_reason)
+
     assistant_content.append({"type": "text", "text": final_text})
     await conversation.add_message("assistant", assistant_content)
     parts = _split_response(final_text)

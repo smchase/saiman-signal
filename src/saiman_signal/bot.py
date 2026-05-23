@@ -103,27 +103,34 @@ async def _handle_envelope(envelope: dict) -> None:
 
         if content_type in _VOICE_CONTENT_TYPES:
             path = await signal_api.download_attachment(att_id)
-            if path:
-                try:
-                    transcribed = await transcribe(path)
-                    text = f"[voice message] {transcribed}" + (f"\n{text}" if text else "")
-                except Exception as e:
-                    logger.error(f"Transcription failed: {e}")
-                    await signal_api.send_message(source, f"Transcription failed: {e}")
-                    return
+            if not path:
+                await signal_api.send_message(source, "[failed to download voice message]")
+                return
+            try:
+                transcribed = await transcribe(path)
+            except Exception as e:
+                logger.error(f"Transcription failed: {e}")
+                await signal_api.send_message(source, f"[transcription failed: {e}]")
+                return
+            if not transcribed.strip():
+                await signal_api.send_message(source, "[transcription returned empty]")
+                return
+            text = f"[voice message] {transcribed}" + (f"\n{text}" if text else "")
 
         elif content_type in _IMAGE_CONTENT_TYPES:
             path = await signal_api.download_attachment(att_id)
-            if path:
-                image_data = base64.standard_b64encode(path.read_bytes()).decode()
-                content_blocks.append({
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": content_type,
-                        "data": image_data,
-                    },
-                })
+            if not path:
+                await signal_api.send_message(source, "[failed to download image]")
+                return
+            image_data = base64.standard_b64encode(path.read_bytes()).decode()
+            content_blocks.append({
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": content_type,
+                    "data": image_data,
+                },
+            })
 
     if text:
         content_blocks.append({"type": "text", "text": f"{_time_prefix()}{text}"})
@@ -170,8 +177,28 @@ async def _process_and_respond(recipient: str) -> None:
     except Exception as e:
         stop.set()
         typing_task.cancel()
+        await conversation.rollback_incomplete_turn()
+        error_msg = _classify_error(e)
         logger.exception("Processing error")
-        await signal_api.send_message(recipient, f"Error: {e}")
+        await signal_api.send_message(recipient, error_msg)
+
+
+def _classify_error(e: Exception) -> str:
+    msg = str(e)
+    name = type(e).__name__
+
+    if "timeout" in name.lower() or "timed out" in msg.lower():
+        return "[timed out waiting for model response. try again or CLEAR]"
+    if "overloaded" in msg.lower() or "529" in msg:
+        return "[model overloaded — try again in a minute]"
+    if "rate" in msg.lower() and "limit" in msg.lower():
+        return "[rate limited — try again in a minute]"
+    if "context" in msg.lower() and ("long" in msg.lower() or "length" in msg.lower()):
+        return "[conversation too long for model context. send CLEAR to reset]"
+    if "400" in msg:
+        return f"[bad request to model API: {msg}]"
+
+    return f"[error: {name}: {msg}]"
 
 
 async def _typing_loop(recipient: str, stop: asyncio.Event) -> None:
