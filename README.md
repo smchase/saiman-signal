@@ -1,15 +1,28 @@
 # saiman-signal
 
-Personal research assistant on Signal. Combines Claude Opus 4.6 (extended thinking) with web/Reddit research tools, accessible via Signal DM.
+Multi-user personal research assistant on Signal. Combines Claude Opus 4.6 (extended thinking) with web/Reddit research tools, accessible via Signal DM. Supports multiple users with isolated conversations, per-user system prompt profiles, and per-user location/timezone.
 
 ## Architecture
 
-- **Bot** (`src/saiman_signal/bot.py`): WebSocket listener for Signal messages, cancel-and-restart orchestration, typing indicators
-- **Agent** (`src/saiman_signal/agent.py`): LLM loop with tool execution (max 20 iterations), adaptive thinking
+- **Bot** (`src/saiman_signal/bot.py`): WebSocket listener for Signal messages, per-user cancel-and-restart orchestration, typing indicators
+- **Agent** (`src/saiman_signal/agent.py`): LLM loop with tool execution (max 20 iterations), adaptive thinking, per-user system prompt construction
 - **Tools**: Web search (Exa), page reading, Reddit search/read (via SSH proxy), Beli restaurant lookup, location setting
-- **Conversation** (`src/saiman_signal/conversation.py`): SQLite persistence with context pruning
+- **Conversation** (`src/saiman_signal/conversation.py`): SQLite persistence with per-user isolation and context pruning
 - **Transcription** (`src/saiman_signal/transcription.py`): Voice memo transcription via OpenAI GPT-4o
 - **Signal CLI REST API**: Docker container handling Signal protocol
+
+## Multi-User
+
+Users are identified by phone number. The primary user (creator) gets a tailored system prompt profile; secondary users get a generic family profile. Each user has:
+- Isolated conversation history (same DB, partitioned by phone number)
+- Independent cancel-and-restart (one user's messages don't interrupt another's)
+- Per-user location/timezone (`data/location_{phone}.json`)
+- Per-user system prompt preamble (`system_prompts/primary.txt` or `secondary.txt`)
+
+System prompts live in a gitignored `system_prompts/` directory:
+- `base.txt` — shared prompt (research approach, response style, tools)
+- `primary.txt` — creator's preamble
+- `secondary.txt` — family members' preamble
 
 ## Prerequisites
 
@@ -24,6 +37,8 @@ Personal research assistant on Signal. Combines Claude Opus 4.6 (extended thinki
 ```bash
 uv sync
 cp .env.example .env  # fill in real values
+mkdir -p system_prompts
+# Create system_prompts/base.txt, primary.txt, secondary.txt
 docker compose up -d  # start Signal CLI REST API
 uv run python -m saiman_signal
 ```
@@ -54,6 +69,10 @@ cd ~/saiman-signal
 # Environment
 cp .env.example .env
 # Fill in real values
+
+# System prompts (not in repo — create manually)
+mkdir -p system_prompts
+# Create base.txt, primary.txt, secondary.txt
 
 # Signal CLI REST API
 docker compose up -d
