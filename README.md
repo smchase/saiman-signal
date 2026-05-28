@@ -135,7 +135,8 @@ docker compose logs -f signal-cli
 |----------|-------------|
 | `SIGNAL_API_URL` | Signal CLI REST API URL (default: `http://localhost:8080`) |
 | `BOT_PHONE_NUMBER` | Bot's registered Signal number |
-| `ALLOWED_NUMBER` | Only this number can interact with the bot |
+| `PRIMARY_NUMBER` | Creator's phone number (gets primary system prompt profile) |
+| `SECONDARY_NUMBERS` | Comma-separated additional allowed numbers (get secondary profile) |
 | `AWS_REGION` | AWS region for Bedrock |
 | `BEDROCK_MODEL_ID` | Claude model ID |
 | `EXA_API_KEY` | Exa search API key |

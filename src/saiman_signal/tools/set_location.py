@@ -26,12 +26,11 @@ DEFINITION = {
     },
 }
 
-_LOCATION_PATH = config.DATA_DIR / "location.json"
 
-
-async def execute(args: dict) -> str:
+async def execute(args: dict, user_id: str) -> str:
     city = args["city"]
     timezone = args["timezone"]
-    _LOCATION_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _LOCATION_PATH.write_text(json.dumps({"city": city, "timezone": timezone}))
+    path = config.location_path(user_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"city": city, "timezone": timezone}))
     return f"Location set to {city} ({timezone})"

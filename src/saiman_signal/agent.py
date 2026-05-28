@@ -6,9 +6,7 @@ import re
 from anthropic import AsyncAnthropicBedrock
 
 from saiman_signal import config, conversation
-from saiman_signal.tools import TOOL_DEFINITIONS, TOOLS
-
-_LOCATION_PATH = config.DATA_DIR / "location.json"
+from saiman_signal.tools import TOOL_DEFINITIONS, TOOLS, TOOLS_WITH_USER_ID
 
 logger = logging.getLogger(__name__)
 
@@ -22,42 +20,45 @@ class EmptyResponseError(Exception):
 
 _client = AsyncAnthropicBedrock(aws_region=config.AWS_REGION, timeout=300.0)
 
-_SYSTEM_PROMPT_PATH = __file__.replace("agent.py", "system_prompt.txt")
-
 MAX_ITERATIONS = 20
 
 
-def _load_system_prompt() -> str:
-    with open(_SYSTEM_PROMPT_PATH) as f:
-        return f.read()
+def _load_prompt_file(name: str) -> str:
+    path = config.SYSTEM_PROMPTS_DIR / name
+    with open(path) as f:
+        return f.read().strip()
 
 
-_SYSTEM_PROMPT = _load_system_prompt()
-
-
-_LOCATION_PATH = config.DATA_DIR / "location.json"
-
-
-def _get_location() -> tuple[str | None, str | None]:
+def _get_location(user_id: str) -> tuple[str | None, str | None]:
     """Read persisted location. Returns (city, timezone) or (None, None)."""
     try:
-        data = json.loads(_LOCATION_PATH.read_text())
+        data = json.loads(config.location_path(user_id).read_text())
         return data["city"], data["timezone"]
     except (FileNotFoundError, KeyError, json.JSONDecodeError):
         return None, None
 
 
-def _build_system_prompt() -> str:
-    """System prompt with location appended if set."""
-    city, tz = _get_location()
+def _build_system_prompt(user_id: str) -> str:
+    """System prompt with user profile and location appended."""
+    base = _load_prompt_file("base.txt")
+
+    if config.is_primary(user_id):
+        preamble = _load_prompt_file("primary.txt")
+    else:
+        preamble = _load_prompt_file("secondary.txt")
+
+    prompt = f"{preamble}\n\n{base}"
+
+    city, tz = _get_location(user_id)
     if city:
-        return f"{_SYSTEM_PROMPT}\n\n[User location: {city} ({tz})]"
-    return _SYSTEM_PROMPT
+        prompt += f"\n\n[User location: {city} ({tz})]"
+
+    return prompt
 
 
-async def run(messages: list[dict]) -> list[str]:
+async def run(messages: list[dict], user_id: str) -> list[str]:
     """Run the agent loop. Returns list of message strings to send."""
-    system_prompt = _build_system_prompt()
+    system_prompt = _build_system_prompt(user_id)
     all_tool_calls: list[dict] = []
 
     for _iteration in range(MAX_ITERATIONS):
@@ -100,7 +101,7 @@ async def run(messages: list[dict]) -> list[str]:
                 )
                 raise EmptyResponseError(response.stop_reason)
             assistant_content = thinking_blocks + [{"type": "text", "text": final_text}]
-            await conversation.add_message("assistant", assistant_content)
+            await conversation.add_message(user_id, "assistant", assistant_content)
             logger.info(f"Agent done (iterations: {_iteration + 1}, tools: {len(all_tool_calls)})")
             parts = _split_response(final_text)
             summary = _build_tool_summary(all_tool_calls)
@@ -122,12 +123,12 @@ async def run(messages: list[dict]) -> list[str]:
             assistant_content.append({"type": "text", "text": joined_text})
         assistant_content.extend(tool_calls)
 
-        await conversation.add_message("assistant", assistant_content)
+        await conversation.add_message(user_id, "assistant", assistant_content)
         messages.append({"role": "assistant", "content": assistant_content})
 
         # Execute tools in parallel
         tool_results = await asyncio.gather(
-            *[_execute_tool(tc) for tc in tool_calls], return_exceptions=True
+            *[_execute_tool(tc, user_id) for tc in tool_calls], return_exceptions=True
         )
 
         # Build tool result content
@@ -149,7 +150,7 @@ async def run(messages: list[dict]) -> list[str]:
                     {"type": "tool_result", "tool_use_id": tc["id"], "content": result}
                 )
 
-        await conversation.add_message("user", result_content)
+        await conversation.add_message(user_id, "user", result_content)
         messages.append({"role": "user", "content": result_content})
 
     # Max iterations — force final answer
@@ -160,7 +161,7 @@ async def run(messages: list[dict]) -> list[str]:
             "Provide your best answer with what you have.",
         }
     ]
-    await conversation.add_message("user", force_msg)
+    await conversation.add_message(user_id, "user", force_msg)
     messages.append({"role": "user", "content": force_msg})
 
     response = await _client.messages.create(
@@ -190,7 +191,7 @@ async def run(messages: list[dict]) -> list[str]:
         raise EmptyResponseError(response.stop_reason)
 
     assistant_content.append({"type": "text", "text": final_text})
-    await conversation.add_message("assistant", assistant_content)
+    await conversation.add_message(user_id, "assistant", assistant_content)
     parts = _split_response(final_text)
     summary = _build_tool_summary(all_tool_calls)
     if summary:
@@ -202,12 +203,14 @@ async def run(messages: list[dict]) -> list[str]:
     return parts
 
 
-async def _execute_tool(tool_call: dict) -> str:
+async def _execute_tool(tool_call: dict, user_id: str) -> str:
     name = tool_call["name"]
     args = tool_call["input"]
     tool_fn = TOOLS.get(name)
     if not tool_fn:
         raise ValueError(f"Unknown tool: {name}")
+    if name in TOOLS_WITH_USER_ID:
+        return await tool_fn(args, user_id)
     return await tool_fn(args)
 
 

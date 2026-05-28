@@ -10,21 +10,21 @@ from zoneinfo import ZoneInfo
 import websockets
 
 from saiman_signal import config, conversation, signal_api
-from saiman_signal.agent import EmptyResponseError, run as agent_run
+from saiman_signal.agent import EmptyResponseError
+from saiman_signal.agent import run as agent_run
 from saiman_signal.transcription import transcribe
 
 logger = logging.getLogger(__name__)
 
 _VOICE_CONTENT_TYPES = {"audio/aac", "audio/ogg", "audio/mp4", "audio/mpeg"}
 _IMAGE_CONTENT_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp", "image/heic"}
-_LOCATION_PATH = config.DATA_DIR / "location.json"
 
-_state: dict = {"task": None}
+_tasks: dict[str, asyncio.Task] = {}
 
 
-def _time_prefix() -> str:
+def _time_prefix(user_id: str) -> str:
     try:
-        data = json.loads(_LOCATION_PATH.read_text())
+        data = json.loads(config.location_path(user_id).read_text())
         tz = ZoneInfo(data["timezone"])
     except (FileNotFoundError, KeyError, json.JSONDecodeError):
         tz = ZoneInfo("UTC")
@@ -32,13 +32,13 @@ def _time_prefix() -> str:
     return f"[{now.strftime('%A, %B %-d, %Y at %-I:%M %p')}]\n\n"
 
 
-async def _cancel_current() -> None:
-    task = _state["task"]
+async def _cancel_current(user_id: str) -> None:
+    task = _tasks.get(user_id)
     if task and not task.done():
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await task
-        await conversation.rollback_incomplete_turn()
+        await conversation.rollback_incomplete_turn(user_id)
 
 
 async def run() -> None:
@@ -72,26 +72,28 @@ async def run() -> None:
 
 async def _handle_envelope(envelope: dict) -> None:
     source = envelope.get("source") or envelope.get("sourceNumber", "")
-    if source != config.ALLOWED_NUMBER:
+    if source not in config.ALLOWED_NUMBERS:
         return
+
+    user_id = source
 
     data_msg = envelope["dataMessage"]
     timestamp = data_msg.get("timestamp", 0)
     text = data_msg.get("message", "") or ""
     attachments = data_msg.get("attachments", [])
 
-    logger.info(f"Message received: {text[:100]!r} (attachments: {len(attachments)})")
+    logger.info(f"[{user_id}] Message received (len={len(text)}, attachments={len(attachments)})")
 
     with contextlib.suppress(Exception):
         await signal_api.send_read_receipt(source, timestamp)
 
     if text.strip() == "CLEAR":
-        await _cancel_current()
+        await _cancel_current(user_id)
         with contextlib.suppress(Exception):
             await signal_api.stop_typing(source)
-        await conversation.clear()
+        await conversation.clear(user_id)
         await signal_api.react(source, source, timestamp, "✅")
-        logger.info("Conversation cleared")
+        logger.info(f"[{user_id}] Conversation cleared")
         return
 
     content_blocks = []
@@ -109,7 +111,7 @@ async def _handle_envelope(envelope: dict) -> None:
             try:
                 transcribed = await transcribe(path)
             except Exception as e:
-                logger.error(f"Transcription failed: {e}")
+                logger.error(f"[{user_id}] Transcription failed: {e}")
                 await signal_api.send_message(source, f"[transcription failed: {e}]")
                 return
             if not transcribed.strip():
@@ -133,32 +135,32 @@ async def _handle_envelope(envelope: dict) -> None:
             })
 
     if text:
-        content_blocks.append({"type": "text", "text": f"{_time_prefix()}{text}"})
+        content_blocks.append({"type": "text", "text": f"{_time_prefix(user_id)}{text}"})
 
     if not content_blocks:
         return
 
-    await conversation.add_message("user", content_blocks)
+    await conversation.add_message(user_id, "user", content_blocks)
 
-    await _cancel_current()
-    _state["task"] = asyncio.create_task(_process_and_respond(source))
+    await _cancel_current(user_id)
+    _tasks[user_id] = asyncio.create_task(_process_and_respond(user_id, source))
 
 
-async def _process_and_respond(recipient: str) -> None:
+async def _process_and_respond(user_id: str, recipient: str) -> None:
     start = time.monotonic()
     stop = asyncio.Event()
     typing_task = asyncio.create_task(_typing_loop(recipient, stop))
 
     try:
-        messages = await conversation.load_all()
-        logger.info(f"Running agent with {len(messages)} messages in context")
-        response_parts = await agent_run(messages)
+        messages = await conversation.load_all(user_id)
+        logger.info(f"[{user_id}] Running agent with {len(messages)} messages in context")
+        response_parts = await agent_run(messages, user_id)
 
         stop.set()
         await typing_task
 
         elapsed = time.monotonic() - start
-        logger.info(f"Response ready ({elapsed:.1f}s, {len(response_parts)} part(s))")
+        logger.info(f"[{user_id}] Response ready ({elapsed:.1f}s, {len(response_parts)} part(s))")
 
         for part in response_parts:
             await signal_api.send_message(recipient, part)
@@ -170,16 +172,16 @@ async def _process_and_respond(recipient: str) -> None:
     except EmptyResponseError as e:
         stop.set()
         typing_task.cancel()
-        await conversation.rollback_incomplete_turn()
+        await conversation.rollback_incomplete_turn(user_id)
         await signal_api.send_message(
             recipient, f"[empty response — stop_reason={e.stop_reason}. try rephrasing]"
         )
     except Exception as e:
         stop.set()
         typing_task.cancel()
-        await conversation.rollback_incomplete_turn()
+        await conversation.rollback_incomplete_turn(user_id)
         error_msg = _classify_error(e)
-        logger.exception("Processing error")
+        logger.exception(f"[{user_id}] Processing error")
         await signal_api.send_message(recipient, error_msg)
 
 

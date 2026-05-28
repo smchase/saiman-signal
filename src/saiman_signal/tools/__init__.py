@@ -31,3 +31,5 @@ TOOLS = {
     "beli_lookup": beli_lookup,
     "set_location": set_location,
 }
+
+TOOLS_WITH_USER_ID = {"set_location"}
