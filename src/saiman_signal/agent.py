@@ -106,6 +106,9 @@ async def run(messages: list[dict]) -> list[str]:
             summary = _build_tool_summary(all_tool_calls)
             if summary:
                 parts.append(summary)
+            location_notice = _build_location_notice(all_tool_calls)
+            if location_notice:
+                parts.append(location_notice)
             return parts
 
         all_tool_calls.extend(tool_calls)
@@ -192,6 +195,9 @@ async def run(messages: list[dict]) -> list[str]:
     summary = _build_tool_summary(all_tool_calls)
     if summary:
         parts.append(summary)
+    location_notice = _build_location_notice(all_tool_calls)
+    if location_notice:
+        parts.append(location_notice)
     parts.append("⚠️ Response may be incomplete — tool call limit reached.")
     return parts
 
@@ -203,6 +209,15 @@ async def _execute_tool(tool_call: dict) -> str:
     if not tool_fn:
         raise ValueError(f"Unknown tool: {name}")
     return await tool_fn(args)
+
+
+def _build_location_notice(tool_calls: list[dict]) -> str | None:
+    for tc in tool_calls:
+        if tc["name"] == "set_location":
+            city = tc["input"].get("city", "")
+            tz = tc["input"].get("timezone", "")
+            return f"📍 Location set to {city} ({tz})"
+    return None
 
 
 def _build_tool_summary(tool_calls: list[dict]) -> str | None:
