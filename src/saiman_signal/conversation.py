@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 
 import aiosqlite
 
@@ -14,7 +15,8 @@ CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id TEXT NOT NULL,
     role TEXT NOT NULL,
-    content_blocks TEXT NOT NULL
+    content_blocks TEXT NOT NULL,
+    created_at REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages(user_id);
 """
@@ -34,7 +36,9 @@ async def _migrate() -> None:
 
     if not columns:
         await _db.executescript(_SCHEMA)
-    elif "user_id" not in columns:
+        return
+
+    if "user_id" not in columns:
         default = config.PRIMARY_NUMBER
         await _db.execute(
             f"ALTER TABLE messages ADD COLUMN user_id TEXT NOT NULL DEFAULT '{default}'"
@@ -43,14 +47,32 @@ async def _migrate() -> None:
             "CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages(user_id)"
         )
 
+    if "created_at" not in columns:
+        await _db.execute(
+            "ALTER TABLE messages ADD COLUMN created_at REAL NOT NULL DEFAULT 0"
+        )
+
 
 async def add_message(user_id: str, role: str, content_blocks: list[dict]) -> int:
     cursor = await _db.execute(
-        "INSERT INTO messages (user_id, role, content_blocks) VALUES (?, ?, ?)",
-        (user_id, role, json.dumps(content_blocks)),
+        "INSERT INTO messages (user_id, role, content_blocks, created_at)"
+        " VALUES (?, ?, ?, ?)",
+        (user_id, role, json.dumps(content_blocks), time.time()),
     )
     await _db.commit()
     return cursor.lastrowid
+
+
+async def seconds_since_last_message(user_id: str) -> float | None:
+    """Seconds since the most recent message in this user's conversation."""
+    cursor = await _db.execute(
+        "SELECT created_at FROM messages WHERE user_id = ? ORDER BY id DESC LIMIT 1",
+        (user_id,),
+    )
+    row = await cursor.fetchone()
+    if not row or row[0] == 0:
+        return None
+    return time.time() - row[0]
 
 
 async def load_all(user_id: str) -> list[dict]:

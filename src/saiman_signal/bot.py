@@ -140,13 +140,24 @@ async def _handle_envelope(envelope: dict) -> None:
     if not content_blocks:
         return
 
+    _STALE_THRESHOLD = 43200  # 12 hours
+    gap = await conversation.seconds_since_last_message(user_id)
+    remind_clear = gap is not None and gap > _STALE_THRESHOLD
+
     await conversation.add_message(user_id, "user", content_blocks)
 
     await _cancel_current(user_id)
-    _tasks[user_id] = asyncio.create_task(_process_and_respond(user_id, source))
+    _tasks[user_id] = asyncio.create_task(
+        _process_and_respond(user_id, source, remind_clear)
+    )
 
 
-async def _process_and_respond(user_id: str, recipient: str) -> None:
+_CLEAR_REMINDER = 'Reminder: send "CLEAR" to start a new conversation.'
+
+
+async def _process_and_respond(
+    user_id: str, recipient: str, remind_clear: bool = False
+) -> None:
     start = time.monotonic()
     stop = asyncio.Event()
     typing_task = asyncio.create_task(_typing_loop(recipient, stop))
@@ -164,6 +175,9 @@ async def _process_and_respond(user_id: str, recipient: str) -> None:
 
         for part in response_parts:
             await signal_api.send_message(recipient, part)
+
+        if remind_clear:
+            await signal_api.send_message(recipient, _CLEAR_REMINDER)
 
     except asyncio.CancelledError:
         stop.set()
