@@ -125,7 +125,7 @@ async def _handle_message(message: dict) -> None:
     if text.strip().upper() == "CLEAR":
         await _cancel_current()
         await conversation.clear(USER_ID)
-        await _react(chat_id, message["message_id"], "✅")
+        await _react(chat_id, message["message_id"], "👍")
         logger.info(f"[{USER_ID}] Conversation cleared")
         return
 
