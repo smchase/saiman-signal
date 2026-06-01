@@ -45,6 +45,17 @@ async def send_message(chat_id: int, text: str) -> None:
     )
 
 
+async def _react(chat_id: int, message_id: int, emoji: str) -> None:
+    await _client.post(
+        f"{_BASE_URL}/setMessageReaction",
+        json={
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "reaction": [{"type": "emoji", "emoji": emoji}],
+        },
+    )
+
+
 async def send_typing(chat_id: int) -> None:
     await _client.post(
         f"{_BASE_URL}/sendChatAction",
@@ -114,7 +125,7 @@ async def _handle_message(message: dict) -> None:
     if text.strip().upper() == "CLEAR":
         await _cancel_current()
         await conversation.clear(USER_ID)
-        await send_message(chat_id, "✅")
+        await _react(chat_id, message["message_id"], "✅")
         logger.info(f"[{USER_ID}] Conversation cleared")
         return
 
