@@ -23,6 +23,9 @@ REDDIT_SSH_HOST = os.environ["REDDIT_SSH_HOST"]
 BELI_EMAIL = os.environ["BELI_EMAIL"]
 BELI_PASSWORD = os.environ["BELI_PASSWORD"]
 
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
+
 DATA_DIR = Path(os.environ.get("DATA_DIR", "./data"))
 ATTACHMENTS_DIR = DATA_DIR / "attachments"
 DB_PATH = DATA_DIR / "saiman.db"
@@ -31,7 +34,7 @@ SYSTEM_PROMPTS_DIR = Path(__file__).resolve().parent.parent.parent / "system_pro
 
 
 def is_primary(user_id: str) -> bool:
-    return user_id == PRIMARY_NUMBER
+    return user_id == PRIMARY_NUMBER or user_id == f"tg_{TELEGRAM_CHAT_ID}"
 
 
 def location_path(user_id: str) -> Path:

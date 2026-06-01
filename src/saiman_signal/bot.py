@@ -45,7 +45,6 @@ async def run() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("anthropic").setLevel(logging.WARNING)
-    await conversation.init()
     logger.info("Bot starting")
 
     ws_url = (
