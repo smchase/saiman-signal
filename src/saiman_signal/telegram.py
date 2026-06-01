@@ -127,7 +127,7 @@ async def _handle_message(message: dict) -> None:
             await send_message(chat_id, "[failed to download voice message]")
             return
         config.ATTACHMENTS_DIR.mkdir(parents=True, exist_ok=True)
-        path = config.ATTACHMENTS_DIR / f"tg_{voice['file_id']}"
+        path = config.ATTACHMENTS_DIR / f"tg_{voice['file_id']}.ogg"
         path.write_bytes(data)
         try:
             transcribed = await transcribe(path)
