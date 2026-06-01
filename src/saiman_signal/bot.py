@@ -91,7 +91,7 @@ async def _handle_envelope(envelope: dict) -> None:
         with contextlib.suppress(Exception):
             await signal_api.stop_typing(source)
         await conversation.clear(user_id)
-        await signal_api.react(source, source, timestamp, "✅")
+        await signal_api.react(source, source, timestamp, "👍")
         logger.info(f"[{user_id}] Conversation cleared")
         return
 
