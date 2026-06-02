@@ -56,7 +56,7 @@ async def _fetch_threads_via_ssh(urls: list[str]) -> list[tuple[str, str | Excep
     curl_cmds = []
     for url in old_reddit_urls:
         curl_cmds.append(
-            f'curl -s -H "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'
+            f'curl -sL -H "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'
             f" AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0"
             f' Safari/537.36" \'{url}\''
         )
@@ -100,7 +100,7 @@ def _to_old_reddit_url(url: str) -> str:
         "https://old.reddit.com",
         clean,
     )
-    return clean + "?sort=top&limit=200"
+    return clean + "/?sort=top&limit=200"
 
 
 def _parse_thread(html: str, url: str) -> str:
