@@ -255,7 +255,7 @@ def _parse_comments(html: str) -> list[dict]:
         )
         if not score_m:
             score_m = re.search(
-                r'<span class="score[^"]*" title="([^"]*)"', chunk
+                r'<span class="score [^"]*" title="([^"]*)"', chunk
             )
         body_m = re.search(
             r'<div class="usertext-body[^"]*"[^>]*>\s*<div class="md">'
