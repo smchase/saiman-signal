@@ -1,9 +1,12 @@
 import asyncio
+import logging
 import re
 from datetime import UTC, datetime
 from html import unescape
 
 from saiman_signal import config
+
+logger = logging.getLogger(__name__)
 
 DEFINITION = {
     "name": "reddit_read",
@@ -56,19 +59,19 @@ async def _fetch_threads_via_ssh(urls: list[str]) -> list[tuple[str, str | Excep
     curl_cmds = []
     for url in old_reddit_urls:
         curl_cmds.append(
-            f'curl -sL -H "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'
+            f"curl -sL -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
             f" AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0"
-            f' Safari/537.36" \'{url}\''
+            f" Safari/537.36' '{url}'"
         )
     shell_cmd = f'\necho "{delimiter}"\n'.join(curl_cmds)
+
+    logger.info(f"reddit_read SSH cmd: {shell_cmd[:200]}")
 
     proc = await asyncio.create_subprocess_exec(
         "ssh",
         "-o",
         "ConnectTimeout=10",
         config.REDDIT_SSH_HOST,
-        "bash",
-        "-c",
         shell_cmd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -76,7 +79,13 @@ async def _fetch_threads_via_ssh(urls: list[str]) -> list[tuple[str, str | Excep
     stdout, stderr = await proc.communicate()
 
     if proc.returncode != 0:
+        logger.warning(
+            f"reddit_read SSH rc={proc.returncode} "
+            f"stderr={stderr.decode()[:200]} stdout_len={len(stdout)}"
+        )
         raise RuntimeError(f"SSH failed: {stderr.decode().strip()}")
+
+    logger.info(f"reddit_read SSH success: {len(stdout)} bytes")
 
     parts = stdout.decode().split(delimiter)
     results: list[tuple[str, str | Exception]] = []
@@ -84,6 +93,7 @@ async def _fetch_threads_via_ssh(urls: list[str]) -> list[tuple[str, str | Excep
         try:
             html = raw.strip()
             if not html or "commentarea" not in html:
+                logger.warning(f"reddit_read no commentarea: {url} ({len(html)} chars)")
                 results.append((url, Exception("No comment data in response")))
             else:
                 results.append((url, _parse_thread(html, url)))
