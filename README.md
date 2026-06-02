@@ -11,6 +11,58 @@ Multi-user personal research assistant on Signal. Combines Claude Opus 4.6 (exte
 - **Transcription** (`src/saiman_signal/transcription.py`): Voice memo transcription via OpenAI GPT-4o
 - **Signal CLI REST API**: Docker container handling Signal protocol
 
+## Reddit Thread Reading
+
+The `reddit_read` tool fetches full Reddit threads (post + comments) for the agent to analyze. Reddit killed unauthenticated `.json` API access on May 29, 2026, so this tool parses server-rendered HTML from `old.reddit.com` instead.
+
+### How it works
+
+1. **URL conversion**: Incoming `www.reddit.com` URLs (from Exa search results) are converted to `old.reddit.com` with `?sort=top&limit=200`
+2. **Fetch via SSH proxy**: `old.reddit.com` blocks datacenter IPs (EC2 gets 403). Requests are proxied through a university server via SSH (`REDDIT_SSH_HOST`). Multiple URLs are fetched in a single SSH session.
+3. **HTML parsing**: The server-rendered HTML is parsed with regex to extract post metadata and comments. Comment depth is determined via stack-based div tracking of nested `siteTable` containers.
+
+### Output format
+
+```
+Reddit Thread: {title}
+============================================================
+r/{subreddit} | u/{author} | {date} | Score: {score} | {n} comments
+
+{selftext or "[Link post - no text content]"}
+
+------------------------------------------------------------
+TOP COMMENTS
+------------------------------------------------------------
+
+[{score} pts] u/{author}
+{comment body}
+
+    [{score} pts] u/{reply_author}
+    {reply body}
+```
+
+### Comment limits
+
+- 20 top-level comments (depth 0)
+- 5 replies per top-level comment (depth 1)
+- 2 sub-replies per depth-1 comment (depth 2)
+- Nothing deeper than depth 2
+
+These match the old `.json` parser limits. Sorted by top (Reddit's ranking), so the most valuable content comes first.
+
+### Known limitations (accepted)
+
+- **Pre-expanded only**: Only parses the top 200 comments Reddit renders on the page. Does not fetch "load more" collapsed threads. This is plenty for research use.
+- **`siteTable_deleted` depth**: When a parent comment is fully removed by Reddit, child comments may display one indent level too shallow. Very rare (~1 per 170 comments).
+- **Score-hidden**: Subreddits that temporarily hide scores show `[? pts]`.
+- **Image-only comments**: Comments that are just an embedded image/gif show the URL or `<image>` placeholder as body text.
+- **Lossy HTML-to-text**: Nested formatting (bold inside links inside blockquotes) may lose some structure. Content is always preserved.
+- **URL handling**: Only converts `www.reddit.com` URLs (what Exa returns). Other subdomains (`i.`, `sh.`, etc.) would pass through unconverted.
+
+### Why this approach
+
+Reddit's `.json` endpoints were permanently deprecated (unauthenticated access returns 403). OAuth app creation now requires manual approval with no guaranteed timeline. `old.reddit.com` still serves fully rendered HTML to non-datacenter IPs, which the existing SSH proxy infrastructure handles. The parser produces identical output to what the old `.json` approach provided.
+
 ## Multi-User
 
 Users are identified by phone number. The primary user (creator) gets a tailored system prompt profile; secondary users get a generic family profile. Each user has:
