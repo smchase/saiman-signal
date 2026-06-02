@@ -286,26 +286,40 @@ def _parse_comments(html: str) -> list[dict]:
     return results
 
 
-def _format_comments(
-    comments: list[dict], max_depth: int = 3, max_comments: int = 100
-) -> str:
-    """Format parsed comments into readable text."""
+def _format_comments(comments: list[dict]) -> str:
+    """Format comments with limits: 20 top-level, 5 depth-1, 2 depth-2 per parent."""
     output = ""
-    count = 0
+    top_count = 0
+    depth1_count = 0
+    depth2_count = 0
 
     for comment in comments:
-        if count >= max_comments:
-            break
-        if comment["depth"] >= max_depth:
+        depth = comment["depth"]
+
+        if depth == 0:
+            if top_count >= 20:
+                continue
+            top_count += 1
+            depth1_count = 0
+            depth2_count = 0
+        elif depth == 1:
+            if depth1_count >= 5:
+                continue
+            depth1_count += 1
+            depth2_count = 0
+        elif depth == 2:
+            if depth2_count >= 2:
+                continue
+            depth2_count += 1
+        else:
             continue
 
-        indent = "    " * comment["depth"]
+        indent = "    " * depth
         output += f"{indent}[{comment['score']} pts] u/{comment['author']}\n"
         for line in comment["body"].split("\n"):
             if line.strip():
                 output += f"{indent}{line}\n"
         output += "\n"
-        count += 1
 
     return output
 
@@ -323,11 +337,12 @@ def _html_to_text(html_content: str) -> str:
     # Lists
     text = re.sub(r"<li>", "- ", text)
     text = re.sub(r"</li>", "\n", text)
-    # Links: preserve URL for non-text links
+    # Links: use text if available, otherwise show URL
     text = re.sub(
-        r'<a[^>]*href="([^"]*)"[^>]*>([^<]*)</a>',
-        lambda m: m.group(2) if m.group(2) else m.group(1),
+        r'<a[^>]*href="([^"]*)"[^>]*>(.*?)</a>',
+        lambda m: re.sub(r"<[^>]+>", "", m.group(2)).strip() or m.group(1),
         text,
+        flags=re.DOTALL,
     )
     # Inline formatting
     text = re.sub(r"<(?:strong|b)>(.*?)</(?:strong|b)>", r"\1", text, flags=re.DOTALL)
