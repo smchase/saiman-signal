@@ -60,6 +60,9 @@ async def run(messages: list[dict], user_id: str) -> list[str]:
     """Run the agent loop. Returns list of message strings to send."""
     system_prompt = _build_system_prompt(user_id)
     all_tool_calls: list[dict] = []
+    hard_errors: set[str] = set()
+    tool_call_counts: dict[str, int] = {}
+    tool_empty_counts: dict[str, int] = {}
 
     for _iteration in range(MAX_ITERATIONS):
         response = await _client.messages.create(
@@ -110,6 +113,7 @@ async def run(messages: list[dict], user_id: str) -> list[str]:
             location_notice = _build_location_notice(all_tool_calls)
             if location_notice:
                 parts.append(location_notice)
+            parts.extend(_build_warnings(hard_errors, tool_call_counts, tool_empty_counts))
             return parts
 
         all_tool_calls.extend(tool_calls)
@@ -134,8 +138,11 @@ async def run(messages: list[dict], user_id: str) -> list[str]:
         # Build tool result content
         result_content = []
         for tc, result in zip(tool_calls, tool_results, strict=True):
+            name = tc["name"]
+            tool_call_counts[name] = tool_call_counts.get(name, 0) + 1
             if isinstance(result, Exception):
-                logger.warning(f"Tool {tc['name']} failed: {result}")
+                logger.warning(f"Tool {name} failed: {result}")
+                hard_errors.add(f"{name}: {result}")
                 result_content.append(
                     {
                         "type": "tool_result",
@@ -144,8 +151,18 @@ async def run(messages: list[dict], user_id: str) -> list[str]:
                         "is_error": True,
                     }
                 )
+            elif result == "":
+                logger.info(f"Tool {name} returned empty")
+                tool_empty_counts[name] = tool_empty_counts.get(name, 0) + 1
+                result_content.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tc["id"],
+                        "content": "No results found.",
+                    }
+                )
             else:
-                logger.info(f"Tool {tc['name']} returned {len(result)} chars")
+                logger.info(f"Tool {name} returned {len(result)} chars")
                 result_content.append(
                     {"type": "tool_result", "tool_use_id": tc["id"], "content": result}
                 )
@@ -199,6 +216,7 @@ async def run(messages: list[dict], user_id: str) -> list[str]:
     location_notice = _build_location_notice(all_tool_calls)
     if location_notice:
         parts.append(location_notice)
+    parts.extend(_build_warnings(hard_errors, tool_call_counts, tool_empty_counts))
     parts.append("⚠️ Response may be incomplete — tool call limit reached.")
     return parts
 
@@ -212,6 +230,20 @@ async def _execute_tool(tool_call: dict, user_id: str) -> str:
     if name in TOOLS_WITH_USER_ID:
         return await tool_fn(args, user_id)
     return await tool_fn(args)
+
+
+def _build_warnings(
+    hard_errors: set[str],
+    tool_call_counts: dict[str, int],
+    tool_empty_counts: dict[str, int],
+) -> list[str]:
+    warnings = []
+    for msg in sorted(hard_errors):
+        warnings.append(f"⚠️ {msg}")
+    for name, empty in tool_empty_counts.items():
+        if empty == tool_call_counts.get(name, 0):
+            warnings.append(f"⚠️ {name}: all calls returned empty")
+    return warnings
 
 
 def _build_location_notice(tool_calls: list[dict]) -> str | None:

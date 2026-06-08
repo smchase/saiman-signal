@@ -35,10 +35,7 @@ async def execute(args: dict) -> str:
         urls = [urls]
     urls = urls[:10]
 
-    try:
-        results = await _fetch_threads_via_ssh(urls)
-    except Exception as e:
-        return f"Error: {e}"
+    results = await _fetch_threads_via_ssh(urls)
 
     output = ""
     for i, (url, result) in enumerate(results):
@@ -48,6 +45,9 @@ async def execute(args: dict) -> str:
             output += f"Error fetching {url}: {result}\n"
         else:
             output += result
+
+    if not any(isinstance(r, str) for _, r in results):
+        return ""
 
     return output
 

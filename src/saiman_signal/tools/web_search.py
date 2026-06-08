@@ -67,7 +67,7 @@ async def execute(args: dict) -> str:
 
     results = data.get("results", [])
     if not results:
-        return f"No results found for: {query}"
+        return ""
 
     output = f"Search results for: {query}\n{'=' * 60}\n\n"
     for i, r in enumerate(results, 1):

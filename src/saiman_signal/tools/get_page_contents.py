@@ -56,7 +56,7 @@ async def execute(args: dict) -> str:
 
     results = data.get("results", [])
     if not results:
-        return "No content could be fetched from the provided URL(s)."
+        return ""
 
     output = f"Page contents for {len(urls)} URL(s):\n{'=' * 60}\n\n"
     for i, r in enumerate(results, 1):

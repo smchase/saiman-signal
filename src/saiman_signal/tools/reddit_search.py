@@ -77,17 +77,17 @@ async def execute(args: dict) -> str:
             headers={"User-Agent": _USER_AGENT},
         )
         if response.status_code == 429:
-            return "Reddit rate limit hit. Try again in a moment."
+            raise RuntimeError("rate limited")
         response.raise_for_status()
 
     try:
         root = ElementTree.fromstring(response.text)
     except ElementTree.ParseError:
-        return "Failed to parse Reddit search response."
+        raise RuntimeError("failed to parse response")
 
     entries = root.findall("atom:entry", _NS)
     if not entries:
-        return f"No Reddit threads found for: {query}"
+        return ""
 
     scope = f"r/{'+'.join(subreddits)}" if subreddits else "all of Reddit"
     output = f"Reddit search ({scope}): {query}\n{'=' * 60}\n\n"
