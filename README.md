@@ -6,10 +6,20 @@ Multi-user personal research assistant on Signal. Combines Claude Opus 4.6 (exte
 
 - **Bot** (`src/saiman_signal/bot.py`): WebSocket listener for Signal messages, per-user cancel-and-restart orchestration, typing indicators
 - **Agent** (`src/saiman_signal/agent.py`): LLM loop with tool execution (max 20 iterations), adaptive thinking, per-user system prompt construction
-- **Tools**: Web search (Exa), page reading, Reddit search/read (via SSH proxy), Beli restaurant lookup, location setting
+- **Tools**: Web search (Exa), page reading, Reddit search (RSS) / read (via SSH proxy), Beli restaurant lookup, location setting
 - **Conversation** (`src/saiman_signal/conversation.py`): SQLite persistence with per-user isolation and context pruning
 - **Transcription** (`src/saiman_signal/transcription.py`): Voice memo transcription via OpenAI GPT-4o
 - **Signal CLI REST API**: Docker container handling Signal protocol
+
+## Reddit Search
+
+The `reddit_search` tool finds Reddit threads via Reddit's RSS search endpoint. Exa dropped Reddit from its index (June 2026), so this uses Reddit's own search directly.
+
+- **Endpoint**: `https://www.reddit.com/search.rss` (or `/r/{sub}/search.rss` for scoped)
+- **No API key needed**, no SSH proxy — works directly from EC2
+- **Keyword-based** (not semantic) — Reddit uses BM25 + engagement signals
+- **25 results** per query with titles, URLs, dates, and 200-char body snippets
+- **Optional**: subreddit scoping (array), sort (relevance/new/top/comments), time filter (all/year/month/week/day)
 
 ## Reddit Thread Reading
 
@@ -17,7 +27,7 @@ The `reddit_read` tool fetches full Reddit threads (post + comments) for the age
 
 ### How it works
 
-1. **URL conversion**: Incoming `www.reddit.com` URLs (from Exa search results) are converted to `old.reddit.com` with `?sort=top&limit=200`
+1. **URL conversion**: Incoming `www.reddit.com` URLs (from RSS search results) are converted to `old.reddit.com` with `?sort=top&limit=200`
 2. **Fetch via SSH proxy**: `old.reddit.com` blocks datacenter IPs (EC2 gets 403). Requests are proxied through a university server via SSH (`REDDIT_SSH_HOST`). Multiple URLs are fetched in a single SSH session.
 3. **HTML parsing**: The server-rendered HTML is parsed with regex to extract post metadata and comments. Comment depth is determined via stack-based div tracking of nested `siteTable` containers.
 
@@ -57,7 +67,7 @@ These match the old `.json` parser limits. Sorted by top (Reddit's ranking), so 
 - **Score-hidden**: Subreddits that temporarily hide scores show `[? pts]`.
 - **Image-only comments**: Comments that are just an embedded image/gif show the URL or `<image>` placeholder as body text.
 - **Lossy HTML-to-text**: Nested formatting (bold inside links inside blockquotes) may lose some structure. Content is always preserved.
-- **URL handling**: Only converts `www.reddit.com` URLs (what Exa returns). Other subdomains (`i.`, `sh.`, etc.) would pass through unconverted.
+- **URL handling**: Only converts `www.reddit.com` URLs (what RSS search returns). Other subdomains (`i.`, `sh.`, etc.) would pass through unconverted.
 
 ### Why this approach
 
