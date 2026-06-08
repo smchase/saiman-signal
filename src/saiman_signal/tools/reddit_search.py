@@ -9,7 +9,9 @@ DEFINITION = {
     "description": (
         "Search Reddit for threads and discussions. Returns titles, URLs, dates,"
         " and body snippets. Use reddit_read to fetch full thread content and comments."
-        " Use the subreddits field to filter to known relevant subreddit(s)."
+        " This is keyword-based search (not semantic) — use specific terms that would"
+        " appear in post titles/bodies. Scoping to subreddit(s) is recommended for"
+        " better relevance."
     ),
     "input_schema": {
         "type": "object",
