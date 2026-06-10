@@ -143,9 +143,9 @@ async def _handle_envelope(envelope: dict) -> None:
     gap = await conversation.seconds_since_last_message(user_id)
     remind_clear = gap is not None and gap > _STALE_THRESHOLD
 
+    await _cancel_current(user_id)
     await conversation.add_message(user_id, "user", content_blocks)
 
-    await _cancel_current(user_id)
     _tasks[user_id] = asyncio.create_task(
         _process_and_respond(user_id, source, remind_clear)
     )

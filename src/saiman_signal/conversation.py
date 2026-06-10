@@ -130,44 +130,48 @@ def _prune_old_tool_results(messages: list[dict]) -> list[dict]:
 
 
 async def rollback_incomplete_turn(user_id: str) -> None:
-    """Delete any messages after the last user message that has no completed assistant reply."""
+    """Delete the incomplete assistant turn (assistant + tool_result messages with no final text reply)."""
     cursor = await _db.execute(
-        "SELECT id FROM messages WHERE user_id = ? AND role = 'user' ORDER BY id DESC LIMIT 1",
+        "SELECT id, role, content_blocks FROM messages WHERE user_id = ? ORDER BY id DESC",
         (user_id,),
     )
-    row = await cursor.fetchone()
-    if not row:
+    rows = await cursor.fetchall()
+    if not rows:
         return
-    last_user_id = row[0]
-    cursor = await _db.execute(
-        "SELECT id FROM messages WHERE user_id = ? AND id > ?"
-        " AND role = 'assistant' ORDER BY id DESC LIMIT 1",
-        (user_id, last_user_id),
-    )
-    last_assistant = await cursor.fetchone()
-    if last_assistant:
-        cursor = await _db.execute(
-            "SELECT MAX(id) FROM messages WHERE user_id = ?", (user_id,)
-        )
-        max_row = await cursor.fetchone()
-        if max_row and max_row[0] != last_assistant[0]:
-            await _db.execute(
-                "DELETE FROM messages WHERE user_id = ? AND id > ?",
-                (user_id, last_assistant[0]),
+
+    ids_to_delete = []
+    for row_id, role, content_json in rows:
+        content = json.loads(content_json)
+        if role == "assistant":
+            has_tool_use = any(
+                b.get("type") == "tool_use" for b in content if isinstance(b, dict)
             )
-            await _db.commit()
-    else:
-        cursor = await _db.execute(
-            "SELECT id FROM messages WHERE user_id = ? AND role != 'user' ORDER BY id DESC LIMIT 1",
-            (user_id,),
-        )
-        last_non_user = await cursor.fetchone()
-        if last_non_user:
-            await _db.execute(
-                "DELETE FROM messages WHERE user_id = ? AND id > ? AND role != 'user'",
-                (user_id, last_non_user[0]),
+            has_text = any(
+                b.get("type") == "text" and b.get("text", "").strip()
+                for b in content
+                if isinstance(b, dict)
             )
-            await _db.commit()
+            if has_tool_use and not has_text:
+                ids_to_delete.append(row_id)
+            else:
+                break
+        elif role == "user":
+            is_tool_results = all(
+                b.get("type") == "tool_result" for b in content if isinstance(b, dict)
+            )
+            if is_tool_results and content:
+                ids_to_delete.append(row_id)
+            else:
+                break
+        else:
+            break
+
+    if ids_to_delete:
+        placeholders = ",".join("?" * len(ids_to_delete))
+        await _db.execute(
+            f"DELETE FROM messages WHERE id IN ({placeholders})", ids_to_delete
+        )
+        await _db.commit()
 
 
 async def clear(user_id: str) -> None:
