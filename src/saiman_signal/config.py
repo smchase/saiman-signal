@@ -16,6 +16,7 @@ AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
 BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "us.anthropic.claude-opus-4-6-v1")
 
 EXA_API_KEY = os.environ["EXA_API_KEY"]
+BRAVE_API_KEY = os.environ["BRAVE_API_KEY"]
 OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 
 REDDIT_SSH_HOST = os.environ["REDDIT_SSH_HOST"]

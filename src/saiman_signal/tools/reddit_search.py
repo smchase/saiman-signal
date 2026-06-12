@@ -1,17 +1,18 @@
 import re
 from html import unescape
-from xml.etree import ElementTree
 
 import httpx
+
+from saiman_signal import config
 
 DEFINITION = {
     "name": "reddit_search",
     "description": (
-        "Search Reddit for threads and discussions. Returns titles, URLs, dates,"
-        " and body snippets. Use reddit_read to fetch full thread content and comments."
-        " This is keyword-based search (not semantic) — use specific terms that would"
-        " appear in post titles/bodies. Scoping to subreddit(s) is recommended for"
-        " better relevance."
+        "Search Reddit for threads and discussions via Brave Search."
+        " Returns titles, URLs, dates, and snippets."
+        " Use reddit_read to fetch full thread content and comments."
+        " Subreddit scoping works by adding subreddit names to the query"
+        " (soft filter, not exact). Recommended for better relevance."
     ),
     "input_schema": {
         "type": "object",
@@ -25,18 +26,15 @@ DEFINITION = {
                 "items": {"type": "string"},
                 "description": (
                     "Optional subreddit(s) to scope the search"
-                    " (e.g. ['askTO', 'toronto']). Omit for global search."
+                    " (e.g. ['askTO', 'toronto']). Added to query as keywords."
                 ),
             },
-            "sort": {
+            "freshness": {
                 "type": "string",
-                "description": "Sort order. Default: relevance.",
-                "enum": ["relevance", "new", "top", "comments"],
-            },
-            "time_filter": {
-                "type": "string",
-                "description": "Time window. Default: all.",
-                "enum": ["all", "year", "month", "week", "day"],
+                "description": (
+                    "Filter by recency. Default: no limit."
+                ),
+                "enum": ["pd", "pw", "pm", "py"],
             },
         },
         "required": ["query"],
@@ -44,79 +42,62 @@ DEFINITION = {
     },
 }
 
-_NS = {"atom": "http://www.w3.org/2005/Atom"}
-_USER_AGENT = (
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
-    " AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
-)
-
 
 async def execute(args: dict) -> str:
     query = args["query"]
     subreddits = args.get("subreddits")
-    sort = args.get("sort")
-    time_filter = args.get("time_filter")
+    freshness = args.get("freshness")
 
-    params = {"q": query, "type": "link"}
-    if sort:
-        params["sort"] = sort
-    if time_filter:
-        params["t"] = time_filter
-
+    search_query = query
     if subreddits:
-        sub_path = "+".join(s.strip().strip("/") for s in subreddits)
-        url = f"https://www.reddit.com/r/{sub_path}/search.rss"
-        params["restrict_sr"] = "on"
-    else:
-        url = "https://www.reddit.com/search.rss"
+        search_query += " " + " ".join(subreddits)
+    search_query += " site:reddit.com"
+
+    params = {"q": search_query, "count": 20}
+    if freshness:
+        params["freshness"] = freshness
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.get(
-            url,
+            "https://api.search.brave.com/res/v1/web/search",
             params=params,
-            headers={"User-Agent": _USER_AGENT},
+            headers={
+                "Accept": "application/json",
+                "Accept-Encoding": "gzip",
+                "X-Subscription-Token": config.BRAVE_API_KEY,
+            },
         )
         if response.status_code == 429:
             raise RuntimeError("rate limited")
         response.raise_for_status()
 
-    try:
-        root = ElementTree.fromstring(response.text)
-    except ElementTree.ParseError:
-        raise RuntimeError("failed to parse response")
+    data = response.json()
+    results = data.get("web", {}).get("results", [])
 
-    entries = root.findall("atom:entry", _NS)
-    if not entries:
+    if not results:
         return ""
 
     scope = f"r/{'+'.join(subreddits)}" if subreddits else "all of Reddit"
     output = f"Reddit search ({scope}): {query}\n{'=' * 60}\n\n"
 
-    for i, entry in enumerate(entries, 1):
-        title = entry.find("atom:title", _NS)
-        link = entry.find("atom:link", _NS)
-        updated = entry.find("atom:updated", _NS)
-        author_el = entry.find("atom:author/atom:name", _NS)
-        cat_el = entry.find("atom:category", _NS)
-        content_el = entry.find("atom:content", _NS)
+    for i, r in enumerate(results, 1):
+        title = r.get("title", "Untitled")
+        url = r.get("url", "")
+        description = r.get("description", "")
+        age = r.get("age", "")
 
-        title_text = title.text if title is not None else "Untitled"
-        link_href = link.get("href", "") if link is not None else ""
-        date_str = updated.text[:10] if updated is not None and updated.text else ""
-        author = author_el.text if author_el is not None else "?"
-        subreddit = cat_el.get("label", "?") if cat_el is not None else "?"
+        sub_match = re.search(r"/r/([^/]+)/", url)
+        subreddit = f"r/{sub_match.group(1)}" if sub_match else "reddit"
 
-        snippet = ""
-        if content_el is not None and content_el.text:
-            text = re.sub(r"<[^>]+>", " ", unescape(content_el.text))
-            text = re.sub(r"\s+", " ", text).strip()
-            text = re.sub(r"\s*submitted by /u/\S+.*$", "", text)
-            if text:
-                snippet = text[:200] + "..." if len(text) > 200 else text
+        snippet = unescape(re.sub(r"<[^>]+>", "", description)).strip()
+        if snippet:
+            snippet = snippet[:200] + "..." if len(snippet) > 200 else snippet
 
-        output += f"[{i}] {title_text}\n"
-        output += f"    {subreddit} | {author} | {date_str}\n"
-        output += f"    {link_href}\n"
+        output += f"[{i}] {title}\n"
+        output += f"    {subreddit}"
+        if age:
+            output += f" | {age}"
+        output += f"\n    {url}\n"
         if snippet:
             output += f"    {snippet}\n"
         output += "\n"
