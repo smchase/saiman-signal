@@ -241,8 +241,8 @@ def _build_warnings(
     for msg in sorted(hard_errors):
         warnings.append(f"⚠️ {msg}")
     for name, empty in tool_empty_counts.items():
-        if empty == tool_call_counts.get(name, 0):
-            warnings.append(f"⚠️ {name}: all calls returned empty")
+        if empty > 0:
+            warnings.append(f"⚠️ {name}: {empty} call(s) returned empty")
     return warnings
 
 
