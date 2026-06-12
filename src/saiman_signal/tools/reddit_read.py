@@ -37,17 +37,15 @@ async def execute(args: dict) -> str:
 
     results = await _fetch_threads_via_ssh(urls)
 
+    for url, result in results:
+        if isinstance(result, Exception):
+            raise RuntimeError(f"Failed to read {url}: {result}")
+
     output = ""
     for i, (url, result) in enumerate(results):
         if i > 0:
             output += f"\n{'=' * 60}\n\n"
-        if isinstance(result, Exception):
-            output += f"Error fetching {url}: {result}\n"
-        else:
-            output += result
-
-    if not any(isinstance(r, str) for _, r in results):
-        return ""
+        output += result
 
     return output
 
@@ -126,7 +124,7 @@ def _parse_thread(html: str, url: str) -> str:
     )
 
     if not post_match:
-        return f"Failed to parse thread: {url}"
+        raise ValueError(f"Failed to parse thread metadata: {url}")
 
     author = post_match.group(1)
     subreddit = post_match.group(2)
@@ -163,6 +161,11 @@ def _parse_thread(html: str, url: str) -> str:
         output += "[Link post - no text content]\n"
 
     comments = _parse_comments(html)
+
+    expected_comments = int(num_comments) if num_comments.isdigit() else 0
+    if not selftext and not comments and expected_comments > 0:
+        raise ValueError(f"Parsed no content from thread with {num_comments} expected comments: {url}")
+
     if comments:
         output += f"\n{'-' * 60}\nTOP COMMENTS\n{'-' * 60}\n\n"
         output += _format_comments(comments)
