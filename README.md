@@ -6,20 +6,19 @@ Multi-user personal research assistant on Signal. Combines Claude Opus 4.6 (exte
 
 - **Bot** (`src/saiman_signal/bot.py`): WebSocket listener for Signal messages, per-user cancel-and-restart orchestration, typing indicators
 - **Agent** (`src/saiman_signal/agent.py`): LLM loop with tool execution (max 20 iterations), adaptive thinking, per-user system prompt construction
-- **Tools**: Web search (Exa), page reading, Reddit search (RSS) / read (via SSH proxy), Beli restaurant lookup, location setting
+- **Tools**: Web search (Exa), page reading, Reddit search (Brave) / read (via SSH proxy), Beli restaurant lookup, location setting
 - **Conversation** (`src/saiman_signal/conversation.py`): SQLite persistence with per-user isolation and context pruning
 - **Transcription** (`src/saiman_signal/transcription.py`): Voice memo transcription via OpenAI GPT-4o
 - **Signal CLI REST API**: Docker container handling Signal protocol
 
 ## Reddit Search
 
-The `reddit_search` tool finds Reddit threads via Reddit's RSS search endpoint. Exa dropped Reddit from its index (June 2026), so this uses Reddit's own search directly.
+The `reddit_search` tool finds Reddit threads via Brave Search API with `site:reddit.com` filtering. Exa dropped Reddit from its index (June 2026), and Reddit's own RSS endpoint has aggressive rate limiting (~1 req/min unauthenticated).
 
-- **Endpoint**: `https://www.reddit.com/search.rss` (or `/r/{sub}/search.rss` for scoped)
-- **No API key needed**, no SSH proxy — works directly from EC2
-- **Keyword-based** (not semantic) — Reddit uses BM25 + engagement signals
-- **25 results** per query with titles, URLs, dates, and 200-char body snippets
-- **Optional**: subreddit scoping (array), sort (relevance/new/top/comments), time filter (all/year/month/week/day)
+- **Backend**: Brave Search API (1000 queries/month free tier)
+- **20 results** per query with titles, URLs, dates, and snippets
+- **Subreddit scoping**: added as keywords to query (soft filter — Brave doesn't support path-based `site:` filtering)
+- **Optional freshness filter**: `pd` (24h), `pw` (week), `pm` (month), `py` (year)
 
 ## Reddit Thread Reading
 
@@ -221,6 +220,7 @@ docker compose logs -f signal-cli
 | `AWS_REGION` | AWS region for Bedrock |
 | `BEDROCK_MODEL_ID` | Claude model ID |
 | `EXA_API_KEY` | Exa search API key |
+| `BRAVE_API_KEY` | Brave Search API key (for Reddit search) |
 | `OPENAI_API_KEY` | OpenAI key (for voice transcription) |
 | `REDDIT_SSH_HOST` | SSH host for Reddit proxy (e.g. `user@host`) |
 | `BELI_EMAIL` | Beli account email |
