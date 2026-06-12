@@ -75,7 +75,7 @@ async def execute(args: dict) -> str:
     results = data.get("web", {}).get("results", [])
 
     if not results:
-        return ""
+        return f"No Reddit threads found for: {query}"
 
     scope = f"r/{'+'.join(subreddits)}" if subreddits else "all of Reddit"
     output = f"Reddit search ({scope}): {query}\n{'=' * 60}\n\n"
